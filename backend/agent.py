@@ -100,8 +100,16 @@ def run_agent(messages: list, profile: dict = None) -> str:
         message = data["choices"][0]["message"]
         tool_calls = message.get("tool_calls", [])
 
+        raw_content = message.get("content") or ""
+
+        # If model printed function call as text instead of using tool_calls, nudge it
+        if not tool_calls and "<function=" in raw_content:
+            full_messages.append({"role": "assistant", "content": raw_content})
+            full_messages.append({"role": "user", "content": "Use the actual tool to check — don't write the function call as text."})
+            continue
+
         if not tool_calls:
-            return message.get("content") or "I'm not sure how to respond — could you rephrase?"
+            return raw_content or "I'm not sure how to respond — could you rephrase?"
 
         # Add assistant message with tool calls
         full_messages.append({
