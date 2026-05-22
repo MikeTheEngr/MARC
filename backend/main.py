@@ -5,7 +5,7 @@ from typing import Optional
 from agent import run_agent
 from memory import get_history, save_history, clear_history
 from auth import sign_up, sign_in, wallet_sign_in, get_profile
-from conversations import (
+from Conversations import (
     create_conversation, get_conversations,
     get_conversation_messages, save_message,
     update_conversation_title, delete_conversation,
