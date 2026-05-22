@@ -53,9 +53,7 @@ def check_balance(address: str = None) -> dict:
     """Check USDC balance of a wallet address on ARC Testnet."""
     try:
         if not address:
-            address = get_wallet_address()
-        if address == "No wallet configured":
-            return {"error": "No wallet private key configured in .env"}
+            return {"error": "No wallet address provided. User needs to connect MetaMask."}
 
         checksummed = Web3.to_checksum_address(address)
         usdc = w3.eth.contract(

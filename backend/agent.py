@@ -58,16 +58,23 @@ def build_system_prompt(profile: dict) -> str:
     if not profile:
         return BASE_SYSTEM_PROMPT
     name = profile.get("username", "there")
-    wallet = profile.get("wallet_address", "not connected")
+    wallet = profile.get("wallet_address", "")
     language = profile.get("language", "English")
     risk = profile.get("risk_appetite", "beginner")
+    wallet_instruction = f"""
+IMPORTANT — The user's wallet address is: {wallet}
+When checking balance or doing anything wallet-related, ALWAYS pass this address: {wallet}
+Never ask the user for their address. You already have it. Call check_balance with address="{wallet}".""" if wallet else """
+The user has not connected a wallet yet. If they ask about balance or transactions, 
+ask them to sign out and sign back in using MetaMask to connect their wallet."""
     return BASE_SYSTEM_PROMPT + f"""
 
 User profile — personalize every response:
 - Name: {name} — use naturally in conversation
-- Wallet: {wallet}
+- Wallet: {wallet if wallet else "not connected"}
 - Language: {language} — respond in this language if not English
-- Experience: {risk} — {'keep it simple, encourage and reassure' if risk == 'beginner' else 'use technical terms, treat as peer'}"""
+- Experience: {risk} — {'keep it simple, encourage and reassure' if risk == 'beginner' else 'use technical terms, treat as peer'}
+{wallet_instruction}"""
 
 
 def run_agent(messages: list, profile: dict = None) -> str:
