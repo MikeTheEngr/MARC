@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { BrowserProvider, Contract, parseUnits } from "ethers";
 
 const API_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
@@ -142,6 +143,74 @@ function AuthScreen({ onAuth }) {
 }
 
 // ── Chat Screen ───────────────────────────────────────────────
+
+// ── Browser wallet send (MetaMask signs, not server) ─────────
+const USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+const ARC_CHAIN_ID = 5042002;
+const ARC_CHAIN_HEX = "0x4CE152";
+
+async function sendViaWallet(toAddress, amount) {
+  if (!window.ethereum) throw new Error("No EVM wallet found. Please install MetaMask.");
+
+  const provider = new BrowserProvider(window.ethereum);
+
+  // Switch to Arc Testnet if needed
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: ARC_CHAIN_HEX }],
+    });
+  } catch (switchError) {
+    if (switchError.code === 4902) {
+      await window.ethereum.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: ARC_CHAIN_HEX,
+          chainName: "Arc Testnet",
+          nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+          rpcUrls: ["https://rpc.testnet.arc.network"],
+          blockExplorerUrls: ["https://testnet.arcscan.app"],
+        }],
+      });
+    }
+  }
+
+  const signer = await provider.getSigner();
+  const ERC20_ABI = [
+    "function transfer(address to, uint256 amount) returns (bool)",
+    "function decimals() view returns (uint8)",
+  ];
+  const usdc = new Contract(USDC_ADDRESS, ERC20_ABI, signer);
+  const decimals = await usdc.decimals();
+  const amountParsed = parseUnits(amount.toString(), decimals);
+  const tx = await usdc.transfer(toAddress, amountParsed);
+  const receipt = await tx.wait();
+  return {
+    success: receipt.status === 1,
+    tx_hash: tx.hash,
+    explorer_url: `https://testnet.arcscan.app/tx/${tx.hash}`,
+  };
+}
+
+// Detect if MARC's reply is a send confirmation
+function detectSendConfirmation(text) {
+  const lower = text.toLowerCase();
+  const hasConfirm = lower.includes("confirm") || lower.includes("go ahead") || lower.includes("proceed") || lower.includes("say yes");
+  const hasSend = lower.includes("send") || lower.includes("transfer");
+  const hasUsdc = lower.includes("usdc");
+  return hasConfirm && hasSend && hasUsdc;
+}
+
+// Extract send details from MARC's reply
+function extractSendDetails(text) {
+  const amountMatch = text.match(/(\d+(?:\.\d+)?)\s*usdc/i);
+  const addressMatch = text.match(/0x[a-fA-F0-9]{40}/);
+  return {
+    amount: amountMatch ? parseFloat(amountMatch[1]) : null,
+    address: addressMatch ? addressMatch[0] : null,
+  };
+}
+
 function ChatScreen({ user, onSignOut }) {
   const profile = user.profile || {};
   const name = profile.username || "there";
@@ -354,12 +423,9 @@ function ChatScreen({ user, onSignOut }) {
           onMouseEnter={e=>e.target.style.color="#FF6B6B"} onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.2)"}> Sign out</button>
 
         {/* Built on Arc */}
-        <a href="https://arc.io" target="_blank" rel="noreferrer" style={{ marginTop:"12px", paddingTop:"10px", borderTop:"1px solid rgba(255,255,255,0.04)", display:"flex", alignItems:"center", gap:"8px", textDecoration:"none", transition:"opacity 0.2s", opacity:0.5 }}
-          onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.5"}>
-          {/* Arc "A" logo SVG */}
-          <svg width="18" height="18" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M50 8L8 88h16l8-16h36l8 16h16L50 8zm0 24l12 24H38L50 32z" fill="white"/>
-          </svg>
+        <a href="https://arc.io" target="_blank" rel="noreferrer" style={{ marginTop:"12px", paddingTop:"10px", borderTop:"1px solid rgba(255,255,255,0.04)", display:"flex", alignItems:"center", gap:"8px", textDecoration:"none", transition:"opacity 0.2s", opacity:0.45 }}
+          onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.45"}>
+          <img src="/arc-logo.png" alt="Arc" style={{ width:"20px", height:"20px", objectFit:"contain", filter:"brightness(0) invert(1)" }} />
           <span style={{ fontSize:"10px", color:"white", letterSpacing:"0.08em", fontFamily:"'Sora',sans-serif", fontWeight:"600" }}>Built on Arc</span>
         </a>
       </div>

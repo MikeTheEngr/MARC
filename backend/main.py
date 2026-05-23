@@ -5,7 +5,7 @@ from typing import Optional
 from agent import run_agent
 from memory import get_history, save_history, clear_history
 from auth import sign_up, sign_in, wallet_sign_in, get_profile
-from Conversations import (
+from conversations import (
     create_conversation, get_conversations,
     get_conversation_messages, save_message,
     update_conversation_title, delete_conversation,
@@ -145,6 +145,43 @@ async def clear(user_id: str):
 
 # ── Blockchain ────────────────────────────────────────────────
 from arc_tools import check_balance, send_usdc, estimate_gas_fee, get_transaction_info, get_network_status
+from web3 import Web3
+
+class BalanceRequest(BaseModel):
+    address: Optional[str] = None
+
+class SendRequest(BaseModel):
+    to_address: str
+    amount: float
+
+class PrepareSendRequest(BaseModel):
+    to_address: str
+    amount: float
+
+@app.post("/prepare-send")
+def prepare_send(req: PrepareSendRequest):
+    try:
+        USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+        DECIMALS = 6
+        amount_raw = int(req.amount * (10 ** DECIMALS))
+        to_checksummed = Web3.to_checksum_address(req.to_address)
+        transfer_selector = "0xa9059cbb"
+        encoded_to = to_checksummed[2:].lower().zfill(64)
+        encoded_amount = hex(amount_raw)[2:].zfill(64)
+        data = transfer_selector + encoded_to + encoded_amount
+        return {
+            "to": USDC_ADDRESS,
+            "data": data,
+            "chain_id": 5042002,
+            "chain_id_hex": hex(5042002),
+            "amount": req.amount,
+            "amount_raw": amount_raw,
+            "recipient": req.to_address,
+            "token": "USDC",
+            "network": "Arc Testnet",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 class BalanceRequest(BaseModel):
     address: Optional[str] = None
