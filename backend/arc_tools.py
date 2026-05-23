@@ -280,16 +280,30 @@ def get_crypto_prices(coins: str = "bitcoin,ethereum,usd-coin") -> dict:
 def get_defi_stats() -> dict:
     """Get DeFi market overview — total TVL and top protocols."""
     try:
-        resp = requests.get("https://api.llama.fi/v2/protocols", timeout=10)
-        if resp.status_code != 200:
-            return {"error": "DeFi Llama API unavailable"}
-        protocols = resp.json()
-        top = sorted([p for p in protocols if p.get("tvl", 0) > 0], key=lambda x: x.get("tvl", 0), reverse=True)[:5]
-        total_tvl = sum(p.get("tvl", 0) for p in protocols if p.get("tvl", 0) > 0)
+        # Use lightweight global TVL endpoint
+        tvl_resp = requests.get("https://api.llama.fi/v2/globalTvl", timeout=8)
+        total_tvl = None
+        if tvl_resp.status_code == 200:
+            total_tvl = tvl_resp.json()
+
+        # Get top protocols from the simpler endpoint
+        top_resp = requests.get("https://api.llama.fi/protocols", timeout=8)
+        top_protocols = []
+        if top_resp.status_code == 200:
+            protocols = top_resp.json()
+            top = sorted([p for p in protocols if p.get("tvl", 0) > 0], key=lambda x: x.get("tvl", 0), reverse=True)[:5]
+            top_protocols = [{"name": p["name"], "tvl": f"${p['tvl']/1e9:.2f}B", "category": p.get("category", "")} for p in top]
+            if total_tvl is None:
+                total_tvl = sum(p.get("tvl", 0) for p in protocols if p.get("tvl", 0) > 0)
+
+        if total_tvl is None:
+            return {"error": "DeFi stats temporarily unavailable"}
+
+        tvl_display = f"${float(total_tvl)/1e9:.1f}B" if isinstance(total_tvl, (int, float)) else str(total_tvl)
         return {
-            "total_defi_tvl": f"${total_tvl/1e9:.1f}B",
-            "top_protocols": [{"name": p["name"], "tvl": f"${p['tvl']/1e9:.2f}B", "category": p.get("category", "")} for p in top],
+            "total_defi_tvl": tvl_display,
+            "top_protocols": top_protocols,
             "source": "DeFi Llama",
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"DeFi stats unavailable: {str(e)}"}
