@@ -2,7 +2,12 @@ import json
 import os
 import requests
 from dotenv import load_dotenv
-from arc_tools import check_balance, send_usdc, estimate_gas_fee, get_transaction_info, get_network_status
+from arc_tools import (
+    check_balance, send_usdc, estimate_gas_fee,
+    get_transaction_info, get_transaction_history,
+    get_token_transfers, get_network_status,
+    get_crypto_prices, get_defi_stats,
+)
 
 load_dotenv()
 
@@ -14,44 +19,94 @@ TOOL_MAP = {
     "send_usdc": send_usdc,
     "estimate_gas_fee": estimate_gas_fee,
     "get_transaction_info": get_transaction_info,
+    "get_transaction_history": get_transaction_history,
+    "get_token_transfers": get_token_transfers,
     "get_network_status": get_network_status,
+    "get_crypto_prices": get_crypto_prices,
+    "get_defi_stats": get_defi_stats,
 }
 
 TOOLS = [
-    {"type": "function", "function": {"name": "check_balance", "description": "Check USDC wallet balance on Arc Testnet. Call IMMEDIATELY when user asks about wallet or balance — no address needed.", "parameters": {"type": "object", "properties": {"address": {"type": "string", "description": "Optional wallet address"}}, "required": []}}},
-    {"type": "function", "function": {"name": "send_usdc", "description": "Send USDC to a wallet address. Always confirm with user before calling.", "parameters": {"type": "object", "properties": {"to_address": {"type": "string"}, "amount": {"type": "number"}}, "required": ["to_address", "amount"]}}},
-    {"type": "function", "function": {"name": "estimate_gas_fee", "description": "Estimate current gas fees on Arc Testnet.", "parameters": {"type": "object", "properties": {}, "required": []}}},
-    {"type": "function", "function": {"name": "get_transaction_info", "description": "Get details of a transaction by its hash.", "parameters": {"type": "object", "properties": {"tx_hash": {"type": "string"}}, "required": ["tx_hash"]}}},
-    {"type": "function", "function": {"name": "get_network_status", "description": "Check Arc Testnet connection and latest block.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "check_balance",
+        "description": "Check USDC wallet balance on Arc Testnet. Call IMMEDIATELY when user asks about wallet or balance — pass the user's wallet address from their profile.",
+        "parameters": {"type": "object", "properties": {"address": {"type": "string", "description": "Wallet address to check"}}, "required": ["address"]},
+    }},
+    {"type": "function", "function": {
+        "name": "send_usdc",
+        "description": "Send USDC to a wallet address on Arc Testnet. Always confirm address and amount with user before calling.",
+        "parameters": {"type": "object", "properties": {"to_address": {"type": "string"}, "amount": {"type": "number"}}, "required": ["to_address", "amount"]},
+    }},
+    {"type": "function", "function": {
+        "name": "estimate_gas_fee",
+        "description": "Estimate current gas fees on Arc Testnet in USDC.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    }},
+    {"type": "function", "function": {
+        "name": "get_transaction_info",
+        "description": "Get details of a specific transaction by its hash.",
+        "parameters": {"type": "object", "properties": {"tx_hash": {"type": "string"}}, "required": ["tx_hash"]},
+    }},
+    {"type": "function", "function": {
+        "name": "get_transaction_history",
+        "description": "Get recent transaction history for a wallet address. Call this when user asks about recent transactions, activity, or history.",
+        "parameters": {"type": "object", "properties": {"address": {"type": "string"}, "limit": {"type": "integer", "description": "Number of transactions to fetch (default 10)"}}, "required": ["address"]},
+    }},
+    {"type": "function", "function": {
+        "name": "get_token_transfers",
+        "description": "Get recent USDC token transfers (sent/received) for a wallet. Call when user asks about transfers, payments sent or received.",
+        "parameters": {"type": "object", "properties": {"address": {"type": "string"}}, "required": ["address"]},
+    }},
+    {"type": "function", "function": {
+        "name": "get_network_status",
+        "description": "Check Arc Testnet connection, latest block, and gas price.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    }},
+    {"type": "function", "function": {
+        "name": "get_crypto_prices",
+        "description": "Get live cryptocurrency prices from CoinGecko. Call when user asks about BTC, ETH, USDC prices, market data, or crypto prices.",
+        "parameters": {"type": "object", "properties": {"coins": {"type": "string", "description": "Comma-separated CoinGecko coin IDs e.g. 'bitcoin,ethereum,usd-coin'"}}, "required": []},
+    }},
+    {"type": "function", "function": {
+        "name": "get_defi_stats",
+        "description": "Get DeFi market overview including total TVL and top protocols. Call when user asks about DeFi market, TVL, or top DeFi protocols.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    }},
 ]
 
-BASE_SYSTEM_PROMPT = """You are MARC — Money on Arc. You are the smartest, most personable AI financial companion on the Arc Network — a Layer-1 blockchain where USDC is the native gas token.
+BASE_SYSTEM_PROMPT = """You are MARC — Money on Arc. The smartest, most personable AI financial companion on the Arc Network — a Layer-1 blockchain where USDC is the native gas token.
 
 You are like that brilliant friend who works in finance and Web3 — real talk, not corporate speak. Warm, sharp, occasionally funny, genuinely invested in helping people. You never make anyone feel dumb.
 
-Your personality:
+## Personality
 - Conversational and natural — talk like a human, not a help page
-- Confident but never arrogant — share knowledge generously
+- Confident but never arrogant
 - Witty when the moment calls for it, serious when it matters
 - Celebrate wins ("let's gooo", "clean transfer!")
-- Ask smart follow-up questions when needed
 - Never use bullet lists in casual conversation — flow naturally
 - Remember what the user said earlier and refer back naturally
 
-What you know:
+## Knowledge
 - Arc: EVM-compatible L1, USDC is gas token AND currency, Chain ID 5042002
 - DeFi: liquidity pools, AMMs, yield farming, lending, staking
-- Stablecoins: USDC, USDT, DAI — mechanics, risks, use cases
+- Stablecoins: USDC, USDT, DAI — mechanics, risks, use cases  
 - Wallets: hot/cold, seed phrases, MetaMask, hardware wallets
 - Security: phishing, rug pulls, smart contract risks
 - Cross-border payments, remittances, crypto vs SWIFT
 - NFTs, DAOs, tokenomics, traditional finance
+- Live market data: always fetch prices when asked, never guess
 
-Tool rules:
-- Wallet or balance mentioned → call check_balance IMMEDIATELY with no arguments
-- Present results in clean human language, never raw JSON
-- Confirm address + amount before sending
-- Mention testnet lightly when relevant, don't repeat it"""
+## Tool usage rules (CRITICAL)
+- Balance/wallet asked → call check_balance with the user's wallet address IMMEDIATELY
+- Transaction history/recent activity → call get_transaction_history with user's wallet address
+- Token transfers/payments → call get_token_transfers with user's wallet address  
+- Crypto price/market asked → call get_crypto_prices IMMEDIATELY
+- DeFi stats/TVL asked → call get_defi_stats IMMEDIATELY
+- Gas/fees asked → call estimate_gas_fee
+- Network status asked → call get_network_status
+- NEVER guess prices or balances — always use tools
+- Present all tool results in clean human language, never raw JSON
+- Confirm address + amount before sending USDC"""
 
 
 def build_system_prompt(profile: dict) -> str:
@@ -61,34 +116,30 @@ def build_system_prompt(profile: dict) -> str:
     wallet = profile.get("wallet_address", "")
     language = profile.get("language", "English")
     risk = profile.get("risk_appetite", "beginner")
-    wallet_instruction = f"""
-IMPORTANT — The user's wallet address is: {wallet}
-When checking balance or doing anything wallet-related, ALWAYS pass this address: {wallet}
-Never ask the user for their address. You already have it. Call check_balance with address="{wallet}".""" if wallet else """
-The user has not connected a wallet yet. If they ask about balance or transactions, 
-ask them to sign out and sign back in using MetaMask to connect their wallet."""
+
+    wallet_section = f"""
+## User's wallet (ALWAYS use this address for all onchain tools)
+Wallet address: {wallet}
+When checking balance, history, or transfers — always pass address="{wallet}" to the tool. Never ask for the address.""" if wallet else """
+## Wallet
+The user has not connected a wallet yet. If they ask about balance or transactions, kindly let them know they need to connect a wallet first."""
+
     return BASE_SYSTEM_PROMPT + f"""
 
-User profile — personalize every response:
+## User profile
 - Name: {name} — use naturally in conversation
-- Wallet: {wallet if wallet else "not connected"}
-- Language: {language} — respond in this language if not English
-- Experience: {risk} — {'keep it simple, encourage and reassure' if risk == 'beginner' else 'use technical terms, treat as peer'}
-{wallet_instruction}"""
+- Language: {language} — respond in this language if not English  
+- Experience: {risk} — {'keep it simple, encourage and reassure' if risk == 'beginner' else 'use technical terms freely, treat as peer'}
+{wallet_section}"""
 
 
 def run_agent(messages: list, profile: dict = None) -> str:
     system_prompt = build_system_prompt(profile or {})
-
     full_messages = [{"role": "system", "content": system_prompt}] + [
         {"role": m["role"], "content": m["content"] if isinstance(m["content"], str) else json.dumps(m["content"])}
         for m in messages
     ]
-
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
     for _ in range(5):
         payload = {
@@ -99,33 +150,28 @@ def run_agent(messages: list, profile: dict = None) -> str:
             "max_tokens": 1024,
             "temperature": 0.7,
         }
-
         resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-
         message = data["choices"][0]["message"]
         tool_calls = message.get("tool_calls", [])
-
         raw_content = message.get("content") or ""
 
-        # If model printed function call as text instead of using tool_calls, nudge it
+        # Detect malformed tool call printed as text
         if not tool_calls and "<function=" in raw_content:
             full_messages.append({"role": "assistant", "content": raw_content})
-            full_messages.append({"role": "user", "content": "Use the actual tool to check — don't write the function call as text."})
+            full_messages.append({"role": "user", "content": "Please use the actual tool — don't write the function call as text."})
             continue
 
         if not tool_calls:
             return raw_content or "I'm not sure how to respond — could you rephrase?"
 
-        # Add assistant message with tool calls
         full_messages.append({
             "role": "assistant",
-            "content": message.get("content") or "",
+            "content": raw_content,
             "tool_calls": tool_calls,
         })
 
-        # Execute each tool
         for tc in tool_calls:
             fn_name = tc["function"]["name"]
             raw_args = tc["function"].get("arguments", "{}")
@@ -141,10 +187,6 @@ def run_agent(messages: list, profile: dict = None) -> str:
             except Exception as e:
                 result = {"error": str(e)}
 
-            full_messages.append({
-                "role": "tool",
-                "tool_call_id": tc["id"],
-                "content": json.dumps(result),
-            })
+            full_messages.append({"role": "tool", "tool_call_id": tc["id"], "content": json.dumps(result)})
 
     return "I ran into a snag — could you try again?"
