@@ -244,12 +244,32 @@ function ChatScreen({ user, onSignOut }) {
 
   const handleKey = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
 
+  // ── Connect EVM wallet (any wallet)
+  const connectEvmWallet = async () => {
+    if (!window.ethereum) return alert("No EVM wallet found. Install MetaMask, Coinbase Wallet, or any EVM wallet.");
+    try {
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      const wallet = accounts[0];
+      const res = await fetch(`${API_URL}/auth/wallet`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet_address: wallet, user_id: user.user_id }),
+      });
+      const data = await res.json();
+      if (res.ok && data.profile) {
+        const updated = { ...user, profile: { ...user.profile, wallet_address: wallet } };
+        store("marc_user", updated);
+        window.location.reload();
+      }
+    } catch (e) { alert("Wallet connection failed: " + e.message); }
+  };
+
   // ── Sidebar content (shared between desktop + mobile drawer)
   const SidebarInner = () => (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
-      {/* Brand */}
-      <div style={{ marginBottom:"20px", flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"8px" }}>
+
+      {/* Brand — pinned top */}
+      <div style={{ marginBottom:"16px", flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"6px" }}>
           <MarcAvatar size={40} />
           <div>
             <div style={{ fontFamily:"'Sora',sans-serif", fontWeight:"800", fontSize:"20px", color:"#F0F6FF", letterSpacing:"0.04em" }}>MARC</div>
@@ -262,14 +282,28 @@ function ChatScreen({ user, onSignOut }) {
         </div>
       </div>
 
-      {/* New chat */}
-      <button onClick={startNewConv} style={{ width:"100%", padding:"9px 12px", background:"rgba(0,229,190,0.08)", border:"1px solid rgba(0,229,190,0.2)", borderRadius:"10px", color:"#00E5BE", fontSize:"12px", fontFamily:"'IBM Plex Mono',monospace", fontWeight:"600", cursor:"pointer", display:"flex", alignItems:"center", gap:"8px", marginBottom:"16px", transition:"all 0.2s", flexShrink:0 }}
+      {/* New chat — pinned top */}
+      <button onClick={startNewConv} style={{ width:"100%", padding:"9px 12px", background:"rgba(0,229,190,0.08)", border:"1px solid rgba(0,229,190,0.2)", borderRadius:"10px", color:"#00E5BE", fontSize:"12px", fontFamily:"'IBM Plex Mono',monospace", fontWeight:"600", cursor:"pointer", display:"flex", alignItems:"center", gap:"8px", marginBottom:"14px", transition:"all 0.2s", flexShrink:0 }}
         onMouseEnter={e => e.currentTarget.style.background="rgba(0,229,190,0.14)"}
         onMouseLeave={e => e.currentTarget.style.background="rgba(0,229,190,0.08)"}
       ><span style={{ fontSize:"15px" }}>+</span> New Chat</button>
 
-      {/* Conversations */}
-      <div style={{ flex:1, overflowY:"auto", marginBottom:"12px" }}>
+      {/* Logged in + Network cards — below new chat */}
+      <div style={{ flexShrink:0, marginBottom:"14px" }}>
+        <div style={{ background:"linear-gradient(135deg,rgba(0,229,190,0.05),rgba(0,102,255,0.05))", border:"1px solid rgba(0,229,190,0.1)", borderRadius:"10px", padding:"10px", marginBottom:"8px" }}>
+          <div style={{ fontSize:"9px", color:"rgba(0,229,190,0.5)", letterSpacing:"0.12em", marginBottom:"4px" }}>LOGGED IN AS</div>
+          <div style={{ fontSize:"13px", color:"#F0F6FF", fontWeight:"700" }}>{name}</div>
+          <div style={{ fontSize:"10px", color:"rgba(255,255,255,0.3)", marginTop:"2px" }}>{profile.risk_appetite==="beginner" ? "🌱 Beginner":"⚡ Experienced"} · {profile.language||"English"}</div>
+        </div>
+        <div style={{ background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:"10px", padding:"10px" }}>
+          <div style={{ fontSize:"9px", color:"rgba(255,255,255,0.3)", letterSpacing:"0.12em", marginBottom:"4px" }}>NETWORK</div>
+          <div style={{ fontSize:"12px", color:"#00E5BE", fontWeight:"700", marginBottom:"3px" }}>Arc Testnet</div>
+          <div style={{ fontSize:"10px", color:"rgba(255,255,255,0.3)", lineHeight:"1.6" }}>Chain ID: 5042002 · Gas: USDC</div>
+        </div>
+      </div>
+
+      {/* Recent chats — scrollable middle */}
+      <div style={{ flex:1, overflowY:"auto", minHeight:0 }}>
         {conversations.length === 0 ? (
           <div style={{ fontSize:"11px", color:"rgba(255,255,255,0.2)", textAlign:"center", padding:"16px 8px", lineHeight:"1.6" }}>No chats yet — start one!</div>
         ) : (
@@ -292,19 +326,30 @@ function ChatScreen({ user, onSignOut }) {
         )}
       </div>
 
-      {/* User info */}
-      <div style={{ flexShrink:0, borderTop:"1px solid rgba(255,255,255,0.05)", paddingTop:"12px" }}>
-        <div style={{ background:"linear-gradient(135deg,rgba(0,229,190,0.05),rgba(0,102,255,0.05))", border:"1px solid rgba(0,229,190,0.1)", borderRadius:"10px", padding:"10px", marginBottom:"10px" }}>
-          <div style={{ fontSize:"13px", color:"#F0F6FF", fontWeight:"700" }}>{name}</div>
-          <div style={{ fontSize:"10px", color:"rgba(255,255,255,0.3)", marginTop:"2px" }}>{profile.risk_appetite==="beginner" ? "🌱 Beginner":"⚡ Experienced"} · {profile.language||"English"}</div>
-          {profile.wallet_address && <div style={{ fontSize:"10px", color:"rgba(0,229,190,0.5)", marginTop:"4px" }}>{profile.wallet_address.slice(0,6)}...{profile.wallet_address.slice(-4)}</div>}
-        </div>
-        <div style={{ display:"flex", flexWrap:"wrap", gap:"4px", marginBottom:"6px" }}>
-          {[["🚰 Faucet","https://faucet.circle.com"],["🔍 Explorer","https://testnet.arcscan.app"],["📄 Docs","https://docs.arc.io"]].map(([l,u])=>(
-            <a key={u} href={u} target="_blank" rel="noreferrer" style={{ fontSize:"10px", color:"rgba(255,255,255,0.3)", textDecoration:"none", padding:"3px 0", transition:"color 0.2s" }}
-              onMouseEnter={e=>e.target.style.color="#00E5BE"} onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.3)"}>{l}</a>
+      {/* User profile — pinned bottom */}
+      <div style={{ flexShrink:0, borderTop:"1px solid rgba(255,255,255,0.06)", paddingTop:"12px", marginTop:"8px" }}>
+        {/* Wallet */}
+        {profile.wallet_address ? (
+          <div style={{ background:"rgba(0,229,190,0.04)", border:"1px solid rgba(0,229,190,0.12)", borderRadius:"10px", padding:"8px 10px", marginBottom:"8px" }}>
+            <div style={{ fontSize:"9px", color:"rgba(0,229,190,0.5)", letterSpacing:"0.1em", marginBottom:"3px" }}>CONNECTED WALLET</div>
+            <div style={{ fontSize:"11px", color:"#00E5BE", fontFamily:"'IBM Plex Mono',monospace" }}>{profile.wallet_address.slice(0,6)}...{profile.wallet_address.slice(-4)}</div>
+          </div>
+        ) : (
+          <button onClick={connectEvmWallet} style={{ width:"100%", padding:"9px 12px", background:"rgba(0,229,190,0.06)", border:"1px solid rgba(0,229,190,0.2)", borderRadius:"10px", color:"#00E5BE", fontSize:"11px", fontFamily:"'IBM Plex Mono',monospace", fontWeight:"600", cursor:"pointer", display:"flex", alignItems:"center", gap:"8px", marginBottom:"8px", transition:"all 0.2s" }}
+            onMouseEnter={e => e.currentTarget.style.background="rgba(0,229,190,0.12)"}
+            onMouseLeave={e => e.currentTarget.style.background="rgba(0,229,190,0.06)"}
+          ><span>🔗</span> Connect Wallet</button>
+        )}
+
+        {/* Links */}
+        <div style={{ display:"flex", gap:"10px", marginBottom:"6px", flexWrap:"wrap" }}>
+          {[["🚰","https://faucet.circle.com"],["🔍","https://testnet.arcscan.app"],["📄","https://docs.arc.io"]].map(([l,u])=>(
+            <a key={u} href={u} target="_blank" rel="noreferrer" style={{ fontSize:"14px", textDecoration:"none", opacity:0.5, transition:"opacity 0.2s" }}
+              onMouseEnter={e=>e.target.style.opacity="1"} onMouseLeave={e=>e.target.style.opacity="0.5"} title={u}>{l}</a>
           ))}
         </div>
+
+        {/* Sign out */}
         <button onClick={onSignOut} style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.2)", fontSize:"11px", cursor:"pointer", textAlign:"left", padding:"3px 0", fontFamily:"'IBM Plex Mono',monospace", width:"100%" }}
           onMouseEnter={e=>e.target.style.color="#FF6B6B"} onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.2)"}> Sign out</button>
       </div>
