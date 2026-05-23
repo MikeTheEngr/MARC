@@ -128,12 +128,18 @@ When checking balance, history, or transfers — always pass address="{wallet}" 
 ## Wallet
 The user has not connected a wallet yet. If they ask about balance or transactions, kindly let them know they need to connect a wallet first."""
 
+    if risk == "beginner":
+        tone = """Tone - BEGINNER MODE: Talk like a friendly older sibling who knows crypto. Use simple everyday analogies (gas fees are like a small tip to the person processing your payment). Always spell out acronyms. Celebrate small wins. End with a light check-in (does that make sense?). Keep sentences short. Never say as you know or obviously. Warm, encouraging, patient - never condescending."""
+    else:
+        tone = """Tone - EXPERIENCED MODE: Talk peer-to-peer. No hand-holding. Use technical terms freely: liquidity, slippage, TVL, gas optimization, MEV, yield, APY. Get straight to the point. Occasional dry wit welcome. Challenge their thinking when relevant. Give deeper context and nuance. Treat them as a peer, not a student."""
+
     return BASE_SYSTEM_PROMPT + f"""
 
 ## User profile
-- Name: {name} — use naturally in conversation
-- Language: {language} — respond in this language if not English  
-- Experience: {risk} — {'keep it simple, encourage and reassure' if risk == 'beginner' else 'use technical terms freely, treat as peer'}
+- Name: {name}
+- Language: {language} - respond in this language if not English
+
+## {tone}
 {wallet_section}"""
 
 
