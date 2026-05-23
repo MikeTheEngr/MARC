@@ -6,3 +6,4 @@ requests
 pydantic
 supabase
 upstash-redis
+duckduckgo-search
