@@ -354,12 +354,9 @@ function ChatScreen({ user, onSignOut }) {
           onMouseEnter={e=>e.target.style.color="#FF6B6B"} onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.2)"}> Sign out</button>
 
         {/* Built on Arc */}
-        <a href="https://arc.io" target="_blank" rel="noreferrer" style={{ marginTop:"12px", paddingTop:"10px", borderTop:"1px solid rgba(255,255,255,0.04)", display:"flex", alignItems:"center", gap:"8px", textDecoration:"none", transition:"opacity 0.2s", opacity:0.5 }}
-          onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.5"}>
-          {/* Arc "A" logo SVG */}
-          <svg width="18" height="18" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M50 8L8 88h16l8-16h36l8 16h16L50 8zm0 24l12 24H38L50 32z" fill="white"/>
-          </svg>
+        <a href="https://arc.io" target="_blank" rel="noreferrer" style={{ marginTop:"12px", paddingTop:"10px", borderTop:"1px solid rgba(255,255,255,0.04)", display:"flex", alignItems:"center", gap:"8px", textDecoration:"none", transition:"opacity 0.2s", opacity:0.45 }}
+          onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.45"}>
+          <img src="/arc-logo.png" alt="Arc" style={{ width:"20px", height:"20px", objectFit:"contain", filter:"brightness(0) invert(1)" }} />
           <span style={{ fontSize:"10px", color:"white", letterSpacing:"0.08em", fontFamily:"'Sora',sans-serif", fontWeight:"600" }}>Built on Arc</span>
         </a>
       </div>
