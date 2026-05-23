@@ -74,6 +74,10 @@ TOOLS = [
     }},
 ]
 
+# Groq supports max 8 tools reliably — use subset based on context
+TOOLS_ONCHAIN = [t for t in TOOLS if t["function"]["name"] in ["check_balance","send_usdc","estimate_gas_fee","get_transaction_info","get_transaction_history","get_token_transfers","get_network_status"]]
+TOOLS_MARKET = [t for t in TOOLS if t["function"]["name"] in ["get_crypto_prices","get_defi_stats","estimate_gas_fee","get_network_status","check_balance","get_transaction_history","get_token_transfers"]]
+
 BASE_SYSTEM_PROMPT = """You are MARC — Money on Arc. The smartest, most personable AI financial companion on the Arc Network — a Layer-1 blockchain where USDC is the native gas token.
 
 You are like that brilliant friend who works in finance and Web3 — real talk, not corporate speak. Warm, sharp, occasionally funny, genuinely invested in helping people. You never make anyone feel dumb.
@@ -141,17 +145,24 @@ def run_agent(messages: list, profile: dict = None) -> str:
     ]
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
+    # Pick tool set based on message content
+    last_msg = messages[-1]["content"].lower() if messages else ""
+    market_keywords = ["price", "bitcoin", "btc", "eth", "ethereum", "market", "tvl", "defi", "worth", "cost", "value"]
+    active_tools = TOOLS_MARKET if any(k in last_msg for k in market_keywords) else TOOLS_ONCHAIN
+
     for _ in range(5):
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": full_messages,
-            "tools": TOOLS,
+            "tools": active_tools,
             "tool_choice": "auto",
             "max_tokens": 1024,
             "temperature": 0.7,
         }
         resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
-        resp.raise_for_status()
+        if not resp.ok:
+            error_detail = resp.json().get("error", {}).get("message", resp.text)
+            return f"I'm having trouble connecting right now. Error: {error_detail}"
         data = resp.json()
         message = data["choices"][0]["message"]
         tool_calls = message.get("tool_calls", [])
