@@ -5,6 +5,7 @@ const API_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 const timeStr = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; };
 const dateLabel = (iso) => {
   const d = new Date(iso), now = new Date();
   const diff = Math.floor((now - d) / 86400000);
@@ -147,7 +148,7 @@ function ChatScreen({ user, onSignOut }) {
 
   const [conversations, setConversations] = useState([]);
   const [activeConvId, setActiveConvId] = useState(null);
-  const [messages, setMessages] = useState([{ role: "assistant", content: `Hey ${name}! I'm MARC — your onchain finance companion on Arc. What's on your mind?`, time: timeStr() }]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -173,7 +174,7 @@ function ChatScreen({ user, onSignOut }) {
     });
     const conv = await res.json();
     setActiveConvId(conv.id);
-    setMessages([{ role: "assistant", content: `Hey ${name}! New conversation. What's on your mind?`, time: timeStr() }]);
+    setMessages([]);
     setSidebarOpen(false);
     await loadConversations();
     inputRef.current?.focus();
@@ -186,7 +187,7 @@ function ChatScreen({ user, onSignOut }) {
       const res = await fetch(`${API_URL}/conversations/${conv.id}/messages`);
       const msgs = await res.json();
       setMessages(msgs.length === 0
-        ? [{ role: "assistant", content: `Hey ${name}! What's on your mind?`, time: timeStr() }]
+        ? []
         : msgs.map(m => ({ role: m.role, content: m.content, time: timeStr() }))
       );
     } catch {}
@@ -349,6 +350,40 @@ function ChatScreen({ user, onSignOut }) {
         {/* Messages */}
         <div style={{ flex:1, overflowY:"auto", padding:"20px 20px 8px", WebkitOverflowScrolling:"touch" }}>
           <div style={{ maxWidth:"720px", width:"100%", margin:"0 auto" }}>
+
+            {/* Welcome screen */}
+            {messages.length === 0 && !loading && (
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"60vh", animation:"fadeUp 0.4s ease" }}>
+                <MarcAvatar size={56} />
+                <h1 style={{ fontFamily:"'Sora',sans-serif", fontWeight:"800", fontSize:"clamp(22px,4vw,32px)", color:"#F0F6FF", marginTop:"16px", marginBottom:"6px", textAlign:"center" }}>
+                  {greeting()}, {name}!
+                </h1>
+                <p style={{ fontSize:"14px", color:"rgba(255,255,255,0.4)", marginBottom:"32px", textAlign:"center" }}>
+                  Your onchain finance companion. Let's get to work.
+                </p>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:"10px", width:"100%" }}>
+                  {[
+                    { icon:"💰", title:"Check Balance", sub:"What's in my wallet?" },
+                    { icon:"📤", title:"Send USDC", sub:"Send money on Arc" },
+                    { icon:"⛽", title:"Gas Fees", sub:"What are current fees?" },
+                    { icon:"🔍", title:"Look up Transaction", sub:"Track a transaction" },
+                    { icon:"📡", title:"Network Status", sub:"Is Arc running fine?" },
+                    { icon:"🎓", title:"Learn DeFi", sub:"Explain DeFi to me" },
+                  ].map(card => (
+                    <button key={card.title} onClick={() => sendMessage(card.sub)}
+                      style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:"14px", padding:"14px 16px", cursor:"pointer", textAlign:"left", transition:"all 0.2s", display:"flex", flexDirection:"column", gap:"4px" }}
+                      onMouseEnter={e => { e.currentTarget.style.background="rgba(0,229,190,0.06)"; e.currentTarget.style.borderColor="rgba(0,229,190,0.2)"; e.currentTarget.style.transform="translateY(-2px)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background="rgba(255,255,255,0.03)"; e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"; e.currentTarget.style.transform="translateY(0)"; }}
+                    >
+                      <span style={{ fontSize:"22px" }}>{card.icon}</span>
+                      <span style={{ fontFamily:"'Sora',sans-serif", fontWeight:"700", fontSize:"13px", color:"#F0F6FF" }}>{card.title}</span>
+                      <span style={{ fontSize:"11px", color:"rgba(255,255,255,0.35)", lineHeight:"1.4" }}>{card.sub}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {messages.map((msg,i) => <MessageBubble key={i} msg={msg} isLatest={i===messages.length-1} />)}
             {loading && (
               <div style={{ display:"flex", alignItems:"flex-end", gap:"8px", marginBottom:"16px", animation:"fadeUp 0.3s ease" }}>
