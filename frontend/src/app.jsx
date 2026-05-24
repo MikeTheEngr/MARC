@@ -19,6 +19,48 @@ const store = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const LANGUAGES = ["English", "French", "Spanish", "Portuguese", "Arabic", "Yoruba", "Hausa", "Igbo"];
 
+// ── Phase 1: Browser wallet send helpers ──────────────────────
+const USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+const ARC_CHAIN_HEX = "0x4CE152";
+
+async function sendViaWallet(toAddress, amount) {
+  if (!window.ethereum) throw new Error("No EVM wallet found. Please install MetaMask.");
+  const provider = new BrowserProvider(window.ethereum);
+  try {
+    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ARC_CHAIN_HEX }] });
+  } catch (switchError) {
+    if (switchError.code === 4902) {
+      await window.ethereum.request({
+        method: "wallet_addEthereumChain",
+        params: [{ chainId: ARC_CHAIN_HEX, chainName: "Arc Testnet", nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 }, rpcUrls: ["https://rpc.testnet.arc.network"], blockExplorerUrls: ["https://testnet.arcscan.app"] }],
+      });
+    }
+  }
+  const signer = await provider.getSigner();
+  const ERC20_ABI = ["function transfer(address to, uint256 amount) returns (bool)", "function decimals() view returns (uint8)"];
+  const usdc = new Contract(USDC_ADDRESS, ERC20_ABI, signer);
+  const decimals = await usdc.decimals();
+  const amountParsed = parseUnits(amount.toString(), decimals);
+  const tx = await usdc.transfer(toAddress, amountParsed);
+  const receipt = await tx.wait();
+  return { success: receipt.status === 1, tx_hash: tx.hash, explorer_url: `https://testnet.arcscan.app/tx/${tx.hash}` };
+}
+
+function detectSendConfirmation(text) {
+  const lower = text.toLowerCase();
+  const hasConfirm = lower.includes("confirm") || lower.includes("go ahead") || lower.includes("proceed") || lower.includes("say yes");
+  const hasSend = lower.includes("send") || lower.includes("transfer");
+  const hasUsdc = lower.includes("usdc");
+  return hasConfirm && hasSend && hasUsdc;
+}
+
+function extractSendDetails(text) {
+  const amountMatch = text.match(/(\d+(?:\.\d+)?)\s*usdc/i);
+  const addressMatch = text.match(/0x[a-fA-F0-9]{40}/);
+  return { amount: amountMatch ? parseFloat(amountMatch[1]) : null, address: addressMatch ? addressMatch[0] : null };
+}
+// ── End Phase 1 helpers ───────────────────────────────────────
+
 function MarcAvatar({ size = 36 }) {
   return (
     <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg, #00E5BE 0%, #0066FF 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Sora', sans-serif", fontWeight: "800", fontSize: size * 0.38, color: "#020B18", boxShadow: "0 0 0 2px rgba(0,229,190,0.2)" }}>M</div>
@@ -143,74 +185,6 @@ function AuthScreen({ onAuth }) {
 }
 
 // ── Chat Screen ───────────────────────────────────────────────
-
-// ── Browser wallet send (MetaMask signs, not server) ─────────
-const USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
-const ARC_CHAIN_ID = 5042002;
-const ARC_CHAIN_HEX = "0x4CE152";
-
-async function sendViaWallet(toAddress, amount) {
-  if (!window.ethereum) throw new Error("No EVM wallet found. Please install MetaMask.");
-
-  const provider = new BrowserProvider(window.ethereum);
-
-  // Switch to Arc Testnet if needed
-  try {
-    await window.ethereum.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: ARC_CHAIN_HEX }],
-    });
-  } catch (switchError) {
-    if (switchError.code === 4902) {
-      await window.ethereum.request({
-        method: "wallet_addEthereumChain",
-        params: [{
-          chainId: ARC_CHAIN_HEX,
-          chainName: "Arc Testnet",
-          nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-          rpcUrls: ["https://rpc.testnet.arc.network"],
-          blockExplorerUrls: ["https://testnet.arcscan.app"],
-        }],
-      });
-    }
-  }
-
-  const signer = await provider.getSigner();
-  const ERC20_ABI = [
-    "function transfer(address to, uint256 amount) returns (bool)",
-    "function decimals() view returns (uint8)",
-  ];
-  const usdc = new Contract(USDC_ADDRESS, ERC20_ABI, signer);
-  const decimals = await usdc.decimals();
-  const amountParsed = parseUnits(amount.toString(), decimals);
-  const tx = await usdc.transfer(toAddress, amountParsed);
-  const receipt = await tx.wait();
-  return {
-    success: receipt.status === 1,
-    tx_hash: tx.hash,
-    explorer_url: `https://testnet.arcscan.app/tx/${tx.hash}`,
-  };
-}
-
-// Detect if MARC's reply is a send confirmation
-function detectSendConfirmation(text) {
-  const lower = text.toLowerCase();
-  const hasConfirm = lower.includes("confirm") || lower.includes("go ahead") || lower.includes("proceed") || lower.includes("say yes");
-  const hasSend = lower.includes("send") || lower.includes("transfer");
-  const hasUsdc = lower.includes("usdc");
-  return hasConfirm && hasSend && hasUsdc;
-}
-
-// Extract send details from MARC's reply
-function extractSendDetails(text) {
-  const amountMatch = text.match(/(\d+(?:\.\d+)?)\s*usdc/i);
-  const addressMatch = text.match(/0x[a-fA-F0-9]{40}/);
-  return {
-    amount: amountMatch ? parseFloat(amountMatch[1]) : null,
-    address: addressMatch ? addressMatch[0] : null,
-  };
-}
-
 function ChatScreen({ user, onSignOut }) {
   const profile = user.profile || {};
   const name = profile.username || "there";
@@ -221,6 +195,9 @@ function ChatScreen({ user, onSignOut }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Phase 1: send confirmation state
+  const [pendingSend, setPendingSend] = useState(null);
+  const [sendLoading, setSendLoading] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -244,6 +221,7 @@ function ChatScreen({ user, onSignOut }) {
     const conv = await res.json();
     setActiveConvId(conv.id);
     setMessages([]);
+    setPendingSend(null);
     setSidebarOpen(false);
     await loadConversations();
     inputRef.current?.focus();
@@ -251,14 +229,12 @@ function ChatScreen({ user, onSignOut }) {
 
   const loadConversation = async (conv) => {
     setActiveConvId(conv.id);
+    setPendingSend(null);
     setSidebarOpen(false);
     try {
       const res = await fetch(`${API_URL}/conversations/${conv.id}/messages`);
       const msgs = await res.json();
-      setMessages(msgs.length === 0
-        ? []
-        : msgs.map(m => ({ role: m.role, content: m.content, time: timeStr() }))
-      );
+      setMessages(msgs.length === 0 ? [] : msgs.map(m => ({ role: m.role, content: m.content, time: timeStr() })));
     } catch {}
     inputRef.current?.focus();
   };
@@ -268,7 +244,8 @@ function ChatScreen({ user, onSignOut }) {
     await fetch(`${API_URL}/conversations/${convId}`, { method: "DELETE" });
     if (activeConvId === convId) {
       setActiveConvId(null);
-      setMessages([{ role: "assistant", content: `Hey ${name}! I'm MARC — your onchain finance companion on Arc. What's on your mind?`, time: timeStr() }]);
+      setMessages([]);
+      setPendingSend(null);
     }
     await loadConversations();
   };
@@ -294,6 +271,7 @@ function ChatScreen({ user, onSignOut }) {
     setMessages(updated);
     setInput("");
     setLoading(true);
+    setPendingSend(null);
 
     try {
       const res = await fetch(`${API_URL}/chat`, {
@@ -301,7 +279,15 @@ function ChatScreen({ user, onSignOut }) {
         body: JSON.stringify({ message: content, user_id: user.user_id, conversation_id: convId }),
       });
       const data = await res.json();
-      setMessages([...updated, { role: "assistant", content: data.reply, time: timeStr() }]);
+      const reply = data.reply;
+      setMessages([...updated, { role: "assistant", content: reply, time: timeStr() }]);
+
+      // Phase 1: detect send confirmation from MARC
+      if (detectSendConfirmation(reply)) {
+        const details = extractSendDetails(reply);
+        if (details.amount && details.address) setPendingSend(details);
+      }
+
       await loadConversations();
     } catch {
       setMessages([...updated, { role: "assistant", content: "Something went wrong — try again!", time: timeStr() }]);
@@ -312,6 +298,25 @@ function ChatScreen({ user, onSignOut }) {
   };
 
   const handleKey = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
+
+  // Phase 1: execute wallet send
+  const executeSend = async () => {
+    if (!pendingSend) return;
+    setSendLoading(true);
+    try {
+      const result = await sendViaWallet(pendingSend.address, pendingSend.amount);
+      setPendingSend(null);
+      const msg = result.success
+        ? `Transaction confirmed! ${pendingSend.amount} USDC sent successfully.\n\nTx: ${result.tx_hash.slice(0,14)}...\nExplorer: ${result.explorer_url}`
+        : "Transaction failed. Please try again.";
+      setMessages(prev => [...prev, { role: "assistant", content: msg, time: timeStr() }]);
+    } catch (e) {
+      setPendingSend(null);
+      setMessages(prev => [...prev, { role: "assistant", content: `Transaction cancelled: ${e.message}`, time: timeStr() }]);
+    } finally {
+      setSendLoading(false);
+    }
+  };
 
   // ── Connect EVM wallet (any wallet)
   const connectEvmWallet = async () => {
@@ -515,6 +520,29 @@ function ChatScreen({ user, onSignOut }) {
             <div ref={bottomRef} />
           </div>
         </div>
+
+        {/* Phase 1: Send confirmation widget */}
+        {pendingSend && (
+          <div style={{ padding:"0 20px 8px", flexShrink:0 }}>
+            <div style={{ maxWidth:"720px", margin:"0 auto" }}>
+              <div style={{ background:"rgba(0,229,190,0.06)", border:"1px solid rgba(0,229,190,0.25)", borderRadius:"14px", padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" }}>
+                <div>
+                  <div style={{ fontSize:"10px", color:"rgba(0,229,190,0.6)", letterSpacing:"0.1em", marginBottom:"3px" }}>CONFIRM TRANSACTION</div>
+                  <div style={{ fontSize:"14px", color:"#F0F6FF", fontWeight:"600" }}>Send {pendingSend.amount} USDC</div>
+                  <div style={{ fontSize:"11px", color:"rgba(255,255,255,0.4)", marginTop:"2px", fontFamily:"'IBM Plex Mono',monospace" }}>{pendingSend.address.slice(0,10)}...{pendingSend.address.slice(-6)}</div>
+                </div>
+                <div style={{ display:"flex", gap:"8px" }}>
+                  <button onClick={executeSend} disabled={sendLoading} style={{ padding:"8px 18px", borderRadius:"10px", background:"linear-gradient(135deg,#00E5BE,#0066FF)", border:"none", color:"#020B18", fontSize:"13px", fontWeight:"700", cursor:sendLoading?"not-allowed":"pointer", fontFamily:"'Sora',sans-serif", opacity:sendLoading?0.7:1 }}>
+                    {sendLoading ? "Signing..." : "Sign & Send"}
+                  </button>
+                  <button onClick={() => setPendingSend(null)} style={{ padding:"8px 14px", borderRadius:"10px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"rgba(255,255,255,0.5)", fontSize:"13px", cursor:"pointer", fontFamily:"'IBM Plex Mono',monospace" }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Input */}
         <div style={{ padding:"12px 20px 20px", background:"rgba(255,255,255,0.01)", borderTop:"1px solid rgba(255,255,255,0.04)", flexShrink:0 }}>
