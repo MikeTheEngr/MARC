@@ -7,6 +7,7 @@ from arc_tools import (
     get_transaction_info, get_transaction_history,
     get_token_transfers, get_network_status,
     get_crypto_prices, get_defi_stats, web_search,
+    get_bridge_info,
 )
 
 load_dotenv()
@@ -25,6 +26,7 @@ TOOL_MAP = {
     "get_crypto_prices": get_crypto_prices,
     "get_defi_stats": get_defi_stats,
     "web_search": web_search,
+    "get_bridge_info": get_bridge_info,
 }
 
 TOOLS = [
@@ -74,6 +76,11 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}, "required": []},
     }},
     {"type": "function", "function": {
+        "name": "get_bridge_info",
+        "description": "Get bridging information for moving USDC to Arc Testnet. Call when user asks to bridge, transfer from another chain, or move USDC across chains.",
+        "parameters": {"type": "object", "properties": {"from_chain": {"type": "string", "description": "Source chain e.g. Ethereum Sepolia, Base Sepolia"}, "amount": {"type": "number", "description": "Amount of USDC to bridge"}}, "required": []},
+    }},
+    {"type": "function", "function": {
         "name": "web_search",
         "description": "Search the web for real-time information. Call this for: latest crypto news, recent events, protocol updates, regulatory news, anything that happened recently, current trends. Do NOT use for prices or balances — use the dedicated tools for those.",
         "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "Search query"}}, "required": ["query"]},
@@ -81,7 +88,7 @@ TOOLS = [
 ]
 
 # Groq supports max 8 tools reliably — use subset based on context
-TOOLS_ONCHAIN = [t for t in TOOLS if t["function"]["name"] in ["check_balance","send_usdc","estimate_gas_fee","get_transaction_info","get_transaction_history","get_token_transfers","get_network_status","web_search"]]
+TOOLS_ONCHAIN = [t for t in TOOLS if t["function"]["name"] in ["check_balance","send_usdc","estimate_gas_fee","get_transaction_info","get_transaction_history","get_token_transfers","get_network_status","web_search","get_bridge_info"]]
 TOOLS_MARKET = [t for t in TOOLS if t["function"]["name"] in ["get_crypto_prices","get_defi_stats","estimate_gas_fee","get_network_status","check_balance","get_transaction_history","web_search"]]
 
 BASE_SYSTEM_PROMPT = """You are MARC — Money on Arc. The smartest, most personable AI financial companion on the Arc Network — a Layer-1 blockchain where USDC is the native gas token.
@@ -116,6 +123,7 @@ You are like that brilliant friend who works in finance and Web3 — real talk, 
 - Network status asked → call get_network_status
 - NEVER guess prices or balances — always use tools
 - For news, recent events, regulatory updates, protocol news → call web_search immediately
+- Bridge/cross-chain transfer mentioned → call get_bridge_info immediately, then tell user MARC will handle it — they just need to confirm
 - Today's date is dynamic — use web_search for anything time-sensitive
 - Present all tool results in clean human language, never raw JSON
 - Confirm address + amount before sending USDC"""

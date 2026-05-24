@@ -327,3 +327,31 @@ def web_search(query: str) -> dict:
         return {"query": query, "results": results, "source": "DuckDuckGo"}
     except Exception as e:
         return {"error": f"Search failed: {str(e)}"}
+
+
+# ── Bridge info ───────────────────────────────────────────────
+def get_bridge_info(from_chain: str = "Ethereum Sepolia", amount: float = None) -> dict:
+    """Get bridging information and guide for moving USDC to Arc Testnet."""
+    try:
+        supported_chains = [
+            {"chain": "Ethereum Sepolia", "chain_id": 11155111, "faucet": "https://sepoliafaucet.com"},
+            {"chain": "Base Sepolia", "chain_id": 84532, "faucet": "https://faucet.base.org"},
+        ]
+        return {
+            "bridge_protocol": "Circle CCTP v2",
+            "destination": "Arc Testnet (Chain ID: 5042002)",
+            "supported_source_chains": supported_chains,
+            "steps": [
+                "1. Approve USDC spend on source chain (MetaMask signature)",
+                "2. Burn USDC on source chain (MetaMask signature)",
+                "3. Circle attestation (~20 seconds — automatic)",
+                "4. USDC minted on Arc Testnet (automatic via Orbit relayer)",
+            ],
+            "estimated_time": "~30-60 seconds",
+            "fees": "Circle protocol fee: 0-14 bps. No additional fees.",
+            "amount_requested": amount,
+            "from_chain": from_chain,
+            "note": "Only 2 MetaMask signatures needed. Circle handles the rest automatically.",
+        }
+    except Exception as e:
+        return {"error": str(e)}

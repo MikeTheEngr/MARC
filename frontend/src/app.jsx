@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { BrowserProvider, Contract, parseUnits } from "ethers";
+import { bridgeToArc, detectBridgeRequest, extractBridgeDetails } from "./bridge.js";
 
 const API_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
@@ -198,6 +199,9 @@ function ChatScreen({ user, onSignOut }) {
   // Phase 1: send confirmation state
   const [pendingSend, setPendingSend] = useState(null);
   const [sendLoading, setSendLoading] = useState(false);
+  const [pendingBridge, setPendingBridge] = useState(null);
+  const [bridgeLoading, setBridgeLoading] = useState(false);
+  const [bridgeStatus, setBridgeStatus] = useState("");
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -272,6 +276,8 @@ function ChatScreen({ user, onSignOut }) {
     setInput("");
     setLoading(true);
     setPendingSend(null);
+    setPendingBridge(null);
+    setBridgeStatus("");
 
     try {
       const res = await fetch(`${API_URL}/chat`, {
@@ -286,6 +292,11 @@ function ChatScreen({ user, onSignOut }) {
       if (detectSendConfirmation(reply)) {
         const details = extractSendDetails(reply);
         if (details.amount && details.address) setPendingSend(details);
+      }
+      // Phase 2: detect bridge confirmation from MARC
+      if (detectBridgeRequest(reply)) {
+        const details = extractBridgeDetails(reply);
+        if (details.amount) setPendingBridge(details);
       }
 
       await loadConversations();
@@ -318,21 +329,53 @@ function ChatScreen({ user, onSignOut }) {
     }
   };
 
+  // Phase 2: execute bridge
+  const executeBridge = async () => {
+    if (!pendingBridge) return;
+    setBridgeLoading(true);
+    setBridgeStatus("Starting bridge...");
+    try {
+      const result = await bridgeToArc({
+        fromChainId: pendingBridge.fromChainId,
+        amount: pendingBridge.amount,
+        onStatus: (s) => setBridgeStatus(s),
+      });
+      setPendingBridge(null);
+      setBridgeStatus("");
+      const msg = `Bridge complete! ${pendingBridge.amount} USDC has landed on Arc Testnet.
+
+Source tx: ${result.sourceTxHash?.slice(0,14)}...
+Dest tx: ${result.destTxHash?.slice(0,14)}...
+Explorer: ${result.explorerUrl}`;
+      setMessages(prev => [...prev, { role: "assistant", content: msg, time: timeStr() }]);
+    } catch (e) {
+      setPendingBridge(null);
+      setBridgeStatus("");
+      setMessages(prev => [...prev, { role: "assistant", content: `Bridge failed: ${e.message}`, time: timeStr() }]);
+    } finally {
+      setBridgeLoading(false);
+    }
+  };
+
   // ── Connect EVM wallet (any wallet)
   const connectEvmWallet = async () => {
     if (!window.ethereum) return alert("No EVM wallet found. Install MetaMask, Coinbase Wallet, or any EVM wallet.");
     try {
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       const wallet = accounts[0];
-      const res = await fetch(`${API_URL}/auth/wallet`, {
+      // Use dedicated update-wallet endpoint to save wallet to existing profile
+      const res = await fetch(`${API_URL}/profile/update-wallet`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet_address: wallet, user_id: user.user_id }),
+        body: JSON.stringify({ user_id: user.user_id, wallet_address: wallet }),
       });
       const data = await res.json();
-      if (res.ok && data.profile) {
+      if (res.ok && data.success) {
+        // Update localStorage with new wallet address so MARC sees it immediately
         const updated = { ...user, profile: { ...user.profile, wallet_address: wallet } };
         store("marc_user", updated);
         window.location.reload();
+      } else {
+        alert("Failed to save wallet: " + (data.detail || "Unknown error"));
       }
     } catch (e) { alert("Wallet connection failed: " + e.message); }
   };
@@ -539,6 +582,35 @@ function ChatScreen({ user, onSignOut }) {
                     Cancel
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Phase 2: Bridge confirmation widget */}
+        {pendingBridge && (
+          <div style={{ padding:"0 20px 8px", flexShrink:0 }}>
+            <div style={{ maxWidth:"720px", margin:"0 auto" }}>
+              <div style={{ background:"rgba(0,102,255,0.06)", border:"1px solid rgba(0,102,255,0.25)", borderRadius:"14px", padding:"14px 16px" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap", marginBottom: bridgeStatus ? "10px" : "0" }}>
+                  <div>
+                    <div style={{ fontSize:"10px", color:"rgba(100,160,255,0.7)", letterSpacing:"0.1em", marginBottom:"3px" }}>BRIDGE TRANSACTION</div>
+                    <div style={{ fontSize:"14px", color:"#F0F6FF", fontWeight:"600" }}>Bridge {pendingBridge.amount} USDC → Arc Testnet</div>
+                    <div style={{ fontSize:"11px", color:"rgba(255,255,255,0.4)", marginTop:"2px" }}>From: {pendingBridge.fromChainName} · Via Circle CCTP</div>
+                  </div>
+                  <div style={{ display:"flex", gap:"8px" }}>
+                    <button onClick={executeBridge} disabled={bridgeLoading} style={{ padding:"8px 18px", borderRadius:"10px", background:"linear-gradient(135deg,#0066FF,#0033AA)", border:"none", color:"white", fontSize:"13px", fontWeight:"700", cursor:bridgeLoading?"not-allowed":"pointer", fontFamily:"'Sora',sans-serif", opacity:bridgeLoading?0.7:1 }}>
+                      {bridgeLoading ? "Bridging..." : "Bridge Now"}
+                    </button>
+                    <button onClick={() => { setPendingBridge(null); setBridgeStatus(""); }} style={{ padding:"8px 14px", borderRadius:"10px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"rgba(255,255,255,0.5)", fontSize:"13px", cursor:"pointer", fontFamily:"'IBM Plex Mono',monospace" }}>Cancel</button>
+                  </div>
+                </div>
+                {bridgeStatus && (
+                  <div style={{ fontSize:"12px", color:"rgba(100,160,255,0.8)", background:"rgba(0,102,255,0.08)", borderRadius:"8px", padding:"8px 12px", display:"flex", alignItems:"center", gap:"8px" }}>
+                    <div style={{ width:"6px", height:"6px", borderRadius:"50%", background:"#0066FF", animation:"pulse 1s infinite", flexShrink:0 }} />
+                    {bridgeStatus}
+                  </div>
+                )}
               </div>
             </div>
           </div>

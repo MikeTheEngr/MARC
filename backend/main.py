@@ -5,7 +5,7 @@ from typing import Optional
 from agent import run_agent
 from memory import get_history, save_history, clear_history
 from auth import sign_up, sign_in, wallet_sign_in, get_profile
-from Conversations import (
+from conversations import (
     create_conversation, get_conversations,
     get_conversation_messages, save_message,
     update_conversation_title, delete_conversation,
@@ -153,6 +153,19 @@ class BalanceRequest(BaseModel):
 class SendRequest(BaseModel):
     to_address: str
     amount: float
+
+class UpdateWalletRequest(BaseModel):
+    user_id: str
+    wallet_address: str
+
+@app.post("/profile/update-wallet")
+async def update_wallet(req: UpdateWalletRequest):
+    from auth import update_profile
+    result = update_profile(req.user_id, {"wallet_address": req.wallet_address})
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Update failed"))
+    profile = get_profile(req.user_id)
+    return {"success": True, "profile": profile}
 
 class PrepareSendRequest(BaseModel):
     to_address: str
