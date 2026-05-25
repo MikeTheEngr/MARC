@@ -156,7 +156,7 @@ class SendRequest(BaseModel):
 
 class UpdateWalletRequest(BaseModel):
     user_id: str
-    wallet_address: str
+    wallet_address: Optional[str] = None
 
 @app.post("/profile/update-wallet")
 async def update_wallet(req: UpdateWalletRequest):

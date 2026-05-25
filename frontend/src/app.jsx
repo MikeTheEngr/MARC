@@ -388,12 +388,16 @@ Explorer: ${result.explorerUrl}`;
     try {
       const res = await fetch(`${API_URL}/profile/update-wallet`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user.user_id, wallet_address: "" }),
+        body: JSON.stringify({ user_id: user.user_id, wallet_address: null }),
       });
       if (res.ok) {
-        const updated = { ...user, profile: { ...user.profile, wallet_address: null } };
-        store("marc_user", updated);
-        setUser(updated);
+        const updatedProfile = { ...user.profile, wallet_address: null };
+        const updatedUser = { ...user, profile: updatedProfile };
+        store("marc_user", updatedUser);
+        window.location.reload();
+      } else {
+        const err = await res.json();
+        alert("Disconnect failed: " + (err.detail || "Unknown error"));
       }
     } catch (e) { alert("Disconnect failed: " + e.message); }
   };
