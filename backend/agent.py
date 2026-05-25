@@ -174,17 +174,30 @@ def run_agent(messages: list, profile: dict = None) -> str:
 
     for _ in range(5):
         payload = {
-            "model": "llama-3.1-8b-instant",
+            "model": "llama-3.3-70b-versatile",
             "messages": full_messages,
             "tools": active_tools,
             "tool_choice": "auto",
             "max_tokens": 1024,
             "temperature": 0.7,
         }
-        resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
-        if not resp.ok:
-            error_detail = resp.json().get("error", {}).get("message", resp.text)
-            return f"I'm having trouble connecting right now. Error: {error_detail}"
+        # Retry up to 3 times on rate limit
+        for attempt in range(3):
+            resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
+            if resp.ok:
+                break
+            err = resp.json().get("error", {})
+            if resp.status_code == 429:
+                import re, time
+                wait = 10  # default wait
+                match = re.search(r"try again in ([\d.]+)s", err.get("message", ""))
+                if match:
+                    wait = min(float(match.group(1)) + 1, 15)
+                if attempt < 2:
+                    time.sleep(wait)
+                    continue
+            error_detail = err.get("message", resp.text)
+            return f"I'm having a moment — could you try again? ({error_detail[:80]}...)"
         data = resp.json()
         message = data["choices"][0]["message"]
         tool_calls = message.get("tool_calls", [])
