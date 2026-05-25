@@ -363,15 +363,18 @@ Explorer: ${result.explorerUrl}`;
     try {
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       const wallet = accounts[0];
-      // Use dedicated update-wallet endpoint to save wallet to existing profile
+      // Save wallet to Supabase profile
       const res = await fetch(`${API_URL}/profile/update-wallet`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: user.user_id, wallet_address: wallet }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        // Update localStorage with new wallet address so MARC sees it immediately
-        const updated = { ...user, profile: { ...user.profile, wallet_address: wallet } };
+        // Fetch fresh profile from backend to ensure wallet is included
+        const profileRes = await fetch(`${API_URL}/profile/${user.user_id}`);
+        const freshProfile = await profileRes.json();
+        // Update localStorage with fresh profile including wallet
+        const updated = { ...user, profile: freshProfile };
         store("marc_user", updated);
         window.location.reload();
       } else {
@@ -641,6 +644,24 @@ export default function App() {
   const [user, setUser] = useState(() => load("marc_user"));
   const handleAuth = (data) => { store("marc_user", data); setUser(data); };
   const handleSignOut = () => { localStorage.removeItem("marc_user"); setUser(null); };
+
+  // Refresh profile from backend on load to pick up wallet changes
+  useEffect(() => {
+    const refreshProfile = async () => {
+      const stored = load("marc_user");
+      if (!stored?.user_id) return;
+      try {
+        const res = await fetch(`${API_URL}/profile/${stored.user_id}`);
+        if (res.ok) {
+          const freshProfile = await res.json();
+          const updated = { ...stored, profile: freshProfile };
+          store("marc_user", updated);
+          setUser(updated);
+        }
+      } catch {}
+    };
+    refreshProfile();
+  }, []);
 
   return (
     <>
