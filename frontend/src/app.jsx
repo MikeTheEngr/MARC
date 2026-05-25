@@ -383,6 +383,21 @@ Explorer: ${result.explorerUrl}`;
     } catch (e) { alert("Wallet connection failed: " + e.message); }
   };
 
+  // ── Disconnect wallet
+  const disconnectWallet = async () => {
+    try {
+      const res = await fetch(`${API_URL}/profile/update-wallet`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user.user_id, wallet_address: "" }),
+      });
+      if (res.ok) {
+        const updated = { ...user, profile: { ...user.profile, wallet_address: null } };
+        store("marc_user", updated);
+        setUser(updated);
+      }
+    } catch (e) { alert("Disconnect failed: " + e.message); }
+  };
+
   // ── Sidebar content (shared between desktop + mobile drawer)
   const SidebarInner = () => (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
@@ -451,8 +466,14 @@ Explorer: ${result.explorerUrl}`;
         {/* Wallet */}
         {profile.wallet_address ? (
           <div style={{ background:"rgba(0,229,190,0.04)", border:"1px solid rgba(0,229,190,0.12)", borderRadius:"10px", padding:"8px 10px", marginBottom:"8px" }}>
-            <div style={{ fontSize:"9px", color:"rgba(0,229,190,0.5)", letterSpacing:"0.1em", marginBottom:"3px" }}>CONNECTED WALLET</div>
-            <div style={{ fontSize:"11px", color:"#00E5BE", fontFamily:"'IBM Plex Mono',monospace" }}>{profile.wallet_address.slice(0,6)}...{profile.wallet_address.slice(-4)}</div>
+            <div style={{ fontSize:"9px", color:"rgba(0,229,190,0.5)", letterSpacing:"0.1em", marginBottom:"4px" }}>CONNECTED WALLET</div>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"6px" }}>
+              <div style={{ fontSize:"11px", color:"#00E5BE", fontFamily:"'IBM Plex Mono',monospace" }}>{profile.wallet_address.slice(0,6)}...{profile.wallet_address.slice(-4)}</div>
+              <button onClick={disconnectWallet} style={{ background:"transparent", border:"1px solid rgba(255,80,80,0.3)", borderRadius:"6px", color:"rgba(255,80,80,0.7)", fontSize:"9px", cursor:"pointer", padding:"2px 6px", fontFamily:"'IBM Plex Mono',monospace", transition:"all 0.2s" }}
+                onMouseEnter={e => { e.currentTarget.style.background="rgba(255,80,80,0.1)"; e.currentTarget.style.color="#FF5050"; }}
+                onMouseLeave={e => { e.currentTarget.style.background="transparent"; e.currentTarget.style.color="rgba(255,80,80,0.7)"; }}
+              >Disconnect</button>
+            </div>
           </div>
         ) : (
           <button onClick={connectEvmWallet} style={{ width:"100%", padding:"9px 12px", background:"rgba(0,229,190,0.06)", border:"1px solid rgba(0,229,190,0.2)", borderRadius:"10px", color:"#00E5BE", fontSize:"11px", fontFamily:"'IBM Plex Mono',monospace", fontWeight:"600", cursor:"pointer", display:"flex", alignItems:"center", gap:"8px", marginBottom:"8px", transition:"all 0.2s" }}

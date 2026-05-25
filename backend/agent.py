@@ -174,7 +174,7 @@ def run_agent(messages: list, profile: dict = None) -> str:
 
     for _ in range(5):
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": "llama-3.1-8b-instant",
             "messages": full_messages,
             "tools": active_tools,
             "tool_choice": "auto",

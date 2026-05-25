@@ -161,7 +161,9 @@ class UpdateWalletRequest(BaseModel):
 @app.post("/profile/update-wallet")
 async def update_wallet(req: UpdateWalletRequest):
     from auth import update_profile
-    result = update_profile(req.user_id, {"wallet_address": req.wallet_address})
+    # Empty string means disconnect — store as None
+    wallet = req.wallet_address if req.wallet_address else None
+    result = update_profile(req.user_id, {"wallet_address": wallet})
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Update failed"))
     profile = get_profile(req.user_id)
