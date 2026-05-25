@@ -497,7 +497,9 @@ Explorer: ${result.explorerUrl}`;
         {/* Built on Arc */}
         <a href="https://arc.io" target="_blank" rel="noreferrer" style={{ marginTop:"12px", paddingTop:"10px", borderTop:"1px solid rgba(255,255,255,0.04)", display:"flex", alignItems:"center", gap:"8px", textDecoration:"none", transition:"opacity 0.2s", opacity:0.45 }}
           onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.45"}>
-          <img src="/arc-logo.png" alt="Arc" style={{ width:"20px", height:"20px", objectFit:"contain", filter:"brightness(0) invert(1)" }} />
+          <svg width="20" height="20" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M50 5 C25 5 5 25 5 50 C5 75 25 95 50 95 C75 95 95 75 95 50 C95 25 75 5 50 5Z M50 15 C69 15 85 31 85 50 C85 69 69 85 50 85 C31 85 15 69 15 50 C15 31 31 15 50 15Z M50 25 L30 70 L42 70 L50 52 L58 70 L70 70 Z" fill="white"/>
+          </svg>
           <span style={{ fontSize:"10px", color:"white", letterSpacing:"0.08em", fontFamily:"'Sora',sans-serif", fontWeight:"600" }}>Built on Arc</span>
         </a>
       </div>
