@@ -91,42 +91,26 @@ TOOLS = [
 TOOLS_ONCHAIN = [t for t in TOOLS if t["function"]["name"] in ["check_balance","send_usdc","estimate_gas_fee","get_transaction_info","get_transaction_history","get_token_transfers","get_network_status","web_search","get_bridge_info"]]
 TOOLS_MARKET = [t for t in TOOLS if t["function"]["name"] in ["get_crypto_prices","get_defi_stats","estimate_gas_fee","get_network_status","check_balance","get_transaction_history","web_search"]]
 
-BASE_SYSTEM_PROMPT = """You are MARC — Money on Arc. The smartest, most personable AI financial companion on the Arc Network — a Layer-1 blockchain where USDC is the native gas token.
+BASE_SYSTEM_PROMPT = """You are MARC — Money on Arc. An AI finance companion on Arc Network (EVM L1, USDC gas token, Chain ID 5042002).
 
-You are like that brilliant friend who works in finance and Web3 — real talk, not corporate speak. Warm, sharp, occasionally funny, genuinely invested in helping people. You never make anyone feel dumb.
+Personality: warm, sharp, peer-level. Talk like a real person — no corporate speak, no bullet lists in conversation. Celebrate wins. Reference what the user said earlier.
 
-## Personality
-- Conversational and natural — talk like a human, not a help page
-- Confident but never arrogant
-- Witty when the moment calls for it, serious when it matters
-- Celebrate wins ("let's gooo", "clean transfer!")
-- Never use bullet lists in casual conversation — flow naturally
-- Remember what the user said earlier and refer back naturally
+Knowledge: Arc Network, DeFi, stablecoins, wallets, security, cross-chain, NFTs, DAOs, traditional finance, crypto markets.
 
-## Knowledge
-- Arc: EVM-compatible L1, USDC is gas token AND currency, Chain ID 5042002
-- DeFi: liquidity pools, AMMs, yield farming, lending, staking
-- Stablecoins: USDC, USDT, DAI — mechanics, risks, use cases  
-- Wallets: hot/cold, seed phrases, MetaMask, hardware wallets
-- Security: phishing, rug pulls, smart contract risks
-- Cross-border payments, remittances, crypto vs SWIFT
-- NFTs, DAOs, tokenomics, traditional finance
-- Live market data: always fetch prices when asked, never guess
+Tools — call immediately when needed, never guess:
+- check_balance → wallet/balance questions (use user wallet address)
+- get_transaction_history → recent transactions/activity  
+- get_token_transfers → USDC transfers in/out
+- send_usdc → confirm address+amount first
+- estimate_gas_fee → fee questions
+- get_transaction_info → tx hash lookup
+- get_network_status → network questions
+- get_crypto_prices → price/market questions
+- get_defi_stats → DeFi TVL questions
+- get_bridge_info → bridge/cross-chain questions
+- web_search → news, recent events, anything time-sensitive
 
-## Tool usage rules (CRITICAL)
-- Balance/wallet asked → call check_balance with the user's wallet address IMMEDIATELY
-- Transaction history/recent activity → call get_transaction_history with user's wallet address
-- Token transfers/payments → call get_token_transfers with user's wallet address  
-- Crypto price/market asked → call get_crypto_prices IMMEDIATELY
-- DeFi stats/TVL asked → call get_defi_stats IMMEDIATELY
-- Gas/fees asked → call estimate_gas_fee
-- Network status asked → call get_network_status
-- NEVER guess prices or balances — always use tools
-- For news, recent events, regulatory updates, protocol news → call web_search immediately
-- Bridge/cross-chain transfer mentioned → call get_bridge_info immediately, then tell user MARC will handle it — they just need to confirm
-- Today's date is dynamic — use web_search for anything time-sensitive
-- Present all tool results in clean human language, never raw JSON
-- Confirm address + amount before sending USDC"""
+Rules: present tool results in clean human language. Mention testnet lightly. Never raw JSON."""
 
 
 def build_system_prompt(profile: dict) -> str:
@@ -137,26 +121,17 @@ def build_system_prompt(profile: dict) -> str:
     language = profile.get("language", "English")
     risk = profile.get("risk_appetite", "beginner")
 
-    wallet_section = f"""
-## User's wallet (ALWAYS use this address for all onchain tools)
-Wallet address: {wallet}
-When checking balance, history, or transfers — always pass address="{wallet}" to the tool. Never ask for the address.""" if wallet else """
-## Wallet
-The user has not connected a wallet yet. If they ask about balance or transactions, kindly let them know they need to connect a wallet first."""
-
     if risk == "beginner":
-        tone = """Tone - BEGINNER MODE: Talk like a friendly older sibling who knows crypto. Use simple everyday analogies (gas fees are like a small tip to the person processing your payment). Always spell out acronyms. Celebrate small wins. End with a light check-in (does that make sense?). Keep sentences short. Never say as you know or obviously. Warm, encouraging, patient - never condescending."""
+        tone = "Tone: beginner mode — simple analogies, spell out jargon, check if they follow, warm and encouraging."
     else:
-        tone = """Tone - EXPERIENCED MODE: Talk peer-to-peer. No hand-holding. Use technical terms freely: liquidity, slippage, TVL, gas optimization, MEV, yield, APY. Get straight to the point. Occasional dry wit welcome. Challenge their thinking when relevant. Give deeper context and nuance. Treat them as a peer, not a student."""
+        tone = "Tone: experienced mode — peer-to-peer, technical terms ok, get straight to point, no hand-holding."
+
+    wallet_note = f'User wallet: {wallet} — always pass this to onchain tools. Never ask for address.' if wallet else "No wallet connected — tell user to connect wallet for onchain actions."
 
     return BASE_SYSTEM_PROMPT + f"""
 
-## User profile
-- Name: {name}
-- Language: {language} - respond in this language if not English
-
-## {tone}
-{wallet_section}"""
+User: {name} | Lang: {language} | {tone}
+{wallet_note}"""
 
 
 def run_agent(messages: list, profile: dict = None) -> str:
@@ -174,30 +149,37 @@ def run_agent(messages: list, profile: dict = None) -> str:
 
     for _ in range(5):
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": model,
             "messages": full_messages,
             "tools": active_tools,
             "tool_choice": "auto",
             "max_tokens": 1024,
             "temperature": 0.7,
         }
-        # Retry up to 3 times on rate limit
-        for attempt in range(3):
-            resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
-            if resp.ok:
+        # Try primary model, fall back to alternatives on rate limit
+        import re, time
+        MODELS = ["llama-3.3-70b-versatile", "gemma2-9b-it", "llama-3.1-8b-instant"]
+        resp = None
+        for model in MODELS:
+            payload["model"] = model
+            for attempt in range(2):
+                resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
+                if resp.ok:
+                    break
+                if resp.status_code == 429:
+                    err_msg = resp.json().get("error", {}).get("message", "")
+                    match = re.search(r"try again in ([\d.]+)s", err_msg)
+                    wait = min(float(match.group(1)) + 0.5, 8) if match else 3
+                    if attempt == 0:
+                        time.sleep(wait)
+                        continue
                 break
-            err = resp.json().get("error", {})
-            if resp.status_code == 429:
-                import re, time
-                wait = 10  # default wait
-                match = re.search(r"try again in ([\d.]+)s", err.get("message", ""))
-                if match:
-                    wait = min(float(match.group(1)) + 1, 15)
-                if attempt < 2:
-                    time.sleep(wait)
-                    continue
-            error_detail = err.get("message", resp.text)
-            return f"I'm having a moment — could you try again? ({error_detail[:80]}...)"
+            if resp and resp.ok:
+                break
+
+        if not resp or not resp.ok:
+            error_detail = resp.json().get("error", {}).get("message", "Unknown error") if resp else "No response"
+            return f"I'm at capacity right now — please try again in a few seconds!"
         data = resp.json()
         message = data["choices"][0]["message"]
         tool_calls = message.get("tool_calls", [])
