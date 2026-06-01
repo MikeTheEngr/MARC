@@ -160,16 +160,23 @@ def call_groq(messages, tools, active_tools):
             "temperature": 0.7,
         }
         for attempt in range(2):
-            resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
-            if resp.ok:
-                return resp.json()
-            if resp.status_code == 429:
-                err_msg = resp.json().get("error", {}).get("message", "")
-                match = re.search(r"try again in ([\d.]+)s", err_msg)
-                wait = min(float(match.group(1)) + 0.5, 8) if match else 3
-                if attempt == 0:
-                    time.sleep(wait)
-                    continue
+            try:
+                resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
+                print(f"[GROQ] model={model} status={resp.status_code}")
+                if resp.ok:
+                    return resp.json()
+                if resp.status_code == 429:
+                    err_msg = resp.json().get("error", {}).get("message", "")
+                    print(f"[GROQ] 429 rate limit: {err_msg[:100]}")
+                    match = re.search(r"try again in ([\d.]+)s", err_msg)
+                    wait = min(float(match.group(1)) + 0.5, 8) if match else 3
+                    if attempt == 0:
+                        time.sleep(wait)
+                        continue
+                else:
+                    print(f"[GROQ] error: {resp.text[:200]}")
+            except Exception as e:
+                print(f"[GROQ] exception: {e}")
             break
     return None
 
@@ -217,7 +224,9 @@ def call_gemini(messages, tools):
 
     try:
         resp = requests.post(url, json=payload, timeout=30)
+        print(f"[GEMINI] status={resp.status_code}")
         if not resp.ok:
+            print(f"[GEMINI] error: {resp.text[:200]}")
             return None
         data = resp.json()
         candidate = data.get("candidates", [{}])[0]
@@ -300,4 +309,5 @@ def run_agent(messages: list, profile: dict = None) -> str:
                 full_messages.append({"role": "assistant", "content": gemini["text"] or ""})
                 full_messages.append({"role": "tool", "tool_call_id": fn_name, "content": json.dumps(result)})
 
+    print("[MARC] All retries exhausted")
     return "I ran into a snag — could you try again?"
