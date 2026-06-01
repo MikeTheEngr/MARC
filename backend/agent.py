@@ -1,6 +1,8 @@
 import json
 import os
 import requests
+import time
+import re
 from dotenv import load_dotenv
 from arc_tools import (
     check_balance, send_usdc, estimate_gas_fee,
@@ -14,6 +16,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 TOOL_MAP = {
     "check_balance": check_balance,
@@ -143,88 +146,158 @@ User: {name} | Lang: {language} | {tone}
 {wallet_note}"""
 
 
-def run_agent(messages: list, profile: dict = None) -> str:
-    system_prompt = build_system_prompt(profile or {})
-    full_messages = [{"role": "system", "content": system_prompt}] + [
-        {"role": m["role"], "content": m["content"] if isinstance(m["content"], str) else json.dumps(m["content"])}
-        for m in messages
-    ]
+def call_groq(messages, tools, active_tools):
+    """Call Groq API with fallback models."""
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-
-    # Pick tool set based on message content
-    last_msg = messages[-1]["content"].lower() if messages else ""
-    market_keywords = ["price", "bitcoin", "btc", "eth", "ethereum", "market", "tvl", "defi", "worth", "cost", "value", "news", "latest", "recent", "today", "happened", "update", "regulation"]
-    active_tools = TOOLS_MARKET if any(k in last_msg for k in market_keywords) else TOOLS_ONCHAIN
-
-    import re, time
     MODELS = ["llama-3.3-70b-versatile", "gemma2-9b-it", "llama-3.1-8b-instant"]
-
-    for _ in range(5):
+    for model in MODELS:
         payload = {
-            "model": "llama-3.3-70b-versatile",
-            "messages": full_messages,
+            "model": model,
+            "messages": messages,
             "tools": active_tools,
             "tool_choice": "auto",
             "max_tokens": 1024,
             "temperature": 0.7,
         }
+        for attempt in range(2):
+            resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
+            if resp.ok:
+                return resp.json()
+            if resp.status_code == 429:
+                err_msg = resp.json().get("error", {}).get("message", "")
+                match = re.search(r"try again in ([\d.]+)s", err_msg)
+                wait = min(float(match.group(1)) + 0.5, 8) if match else 3
+                if attempt == 0:
+                    time.sleep(wait)
+                    continue
+            break
+    return None
 
-        # Try each model, fall back on rate limit
-        resp = None
-        for model in MODELS:
-            payload["model"] = model
-            for attempt in range(2):
-                resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
-                if resp.ok:
-                    break
-                if resp.status_code == 429:
-                    err_msg = resp.json().get("error", {}).get("message", "")
-                    match = re.search(r"try again in ([\d.]+)s", err_msg)
-                    wait = min(float(match.group(1)) + 0.5, 8) if match else 3
-                    if attempt == 0:
-                        time.sleep(wait)
-                        continue
-                break
-            if resp and resp.ok:
-                break
 
-        if not resp or not resp.ok:
-            return "I'm at capacity right now — please try again in a few seconds!"
+def call_gemini(messages, tools):
+    """Call Gemini API as fallback — 1500 req/day free."""
+    if not GEMINI_API_KEY:
+        return None
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+
+    # Convert messages to Gemini format
+    system_parts = [m for m in messages if m["role"] == "system"]
+    chat_messages = [m for m in messages if m["role"] != "system"]
+
+    gemini_tools = [{
+        "function_declarations": [
+            {
+                "name": t["function"]["name"],
+                "description": t["function"]["description"],
+                "parameters": t["function"]["parameters"],
+            }
+            for t in tools
+        ]
+    }]
+
+    contents = []
+    for m in chat_messages:
+        role = "model" if m["role"] == "assistant" else "user"
+        content = m.get("content", "")
+        if isinstance(content, str) and content:
+            contents.append({"role": role, "parts": [{"text": content}]})
+        elif m["role"] == "tool":
+            contents.append({"role": "user", "parts": [{"functionResponse": {"name": "tool", "response": {"result": content}}}]})
+
+    if not contents:
+        return None
+
+    payload = {
+        "contents": contents,
+        "tools": gemini_tools,
+        "tool_config": {"function_calling_config": {"mode": "AUTO"}},
+    }
+    if system_parts:
+        payload["system_instruction"] = {"parts": [{"text": system_parts[0]["content"]}]}
+
+    try:
+        resp = requests.post(url, json=payload, timeout=30)
+        if not resp.ok:
+            return None
         data = resp.json()
-        message = data["choices"][0]["message"]
-        tool_calls = message.get("tool_calls", [])
-        raw_content = message.get("content") or ""
+        candidate = data.get("candidates", [{}])[0]
+        parts = candidate.get("content", {}).get("parts", [])
+        text_parts = [p.get("text", "") for p in parts if "text" in p]
+        fn_calls = [p.get("functionCall") for p in parts if "functionCall" in p]
+        return {"gemini": True, "text": " ".join(text_parts), "fn_calls": fn_calls}
+    except Exception:
+        return None
 
-        # Detect malformed tool call printed as text
-        if not tool_calls and "<function=" in raw_content:
-            full_messages.append({"role": "assistant", "content": raw_content})
-            full_messages.append({"role": "user", "content": "Please use the actual tool — don't write the function call as text."})
-            continue
 
-        if not tool_calls:
-            return raw_content or "I'm not sure how to respond — could you rephrase?"
+def run_agent(messages: list, profile: dict = None) -> str:
+    """Run MARC — Gemini primary (1500/day free), Groq fallback (fast)."""
+    system_prompt = build_system_prompt(profile or {})
+    full_messages = [{"role": "system", "content": system_prompt}] + [
+        {"role": m["role"], "content": m["content"] if isinstance(m["content"], str) else json.dumps(m["content"])}
+        for m in messages
+    ]
 
-        full_messages.append({
-            "role": "assistant",
-            "content": raw_content,
-            "tool_calls": tool_calls,
-        })
+    last_msg = messages[-1]["content"].lower() if messages else ""
+    market_keywords = ["price", "bitcoin", "btc", "eth", "ethereum", "market", "tvl", "defi", "worth", "cost", "value", "news", "latest", "recent", "today", "happened", "update", "regulation"]
+    active_tools = TOOLS_MARKET if any(k in last_msg for k in market_keywords) else TOOLS_ONCHAIN
 
-        for tc in tool_calls:
-            fn_name = tc["function"]["name"]
-            raw_args = tc["function"].get("arguments", "{}")
-            try:
-                fn_args = json.loads(raw_args) if raw_args and raw_args.strip() not in ("null", "") else {}
-                if not isinstance(fn_args, dict):
+    for _ in range(5):
+        # Try Groq first (faster), fall back to Gemini
+        data = call_groq(full_messages, TOOLS, active_tools)
+
+        if data:
+            # Groq response
+            message = data["choices"][0]["message"]
+            tool_calls = message.get("tool_calls", [])
+            raw_content = message.get("content") or ""
+
+            if not tool_calls and "<function=" in raw_content:
+                full_messages.append({"role": "assistant", "content": raw_content})
+                full_messages.append({"role": "user", "content": "Use the actual tool — don't write the function call as text."})
+                continue
+
+            if not tool_calls:
+                return raw_content or "I'm not sure how to respond — could you rephrase?"
+
+            full_messages.append({
+                "role": "assistant",
+                "content": raw_content,
+                "tool_calls": tool_calls,
+            })
+
+            for tc in tool_calls:
+                fn_name = tc["function"]["name"]
+                raw_args = tc["function"].get("arguments", "{}")
+                try:
+                    fn_args = json.loads(raw_args) if raw_args and raw_args.strip() not in ("null", "") else {}
+                    if not isinstance(fn_args, dict):
+                        fn_args = {}
+                except Exception:
                     fn_args = {}
-            except Exception:
-                fn_args = {}
+                try:
+                    result = TOOL_MAP[fn_name](**fn_args) if fn_name in TOOL_MAP else {"error": f"Unknown tool: {fn_name}"}
+                except Exception as e:
+                    result = {"error": str(e)}
+                full_messages.append({"role": "tool", "tool_call_id": tc["id"], "content": json.dumps(result)})
 
-            try:
-                result = TOOL_MAP[fn_name](**fn_args) if fn_name in TOOL_MAP else {"error": f"Unknown tool: {fn_name}"}
-            except Exception as e:
-                result = {"error": str(e)}
+        else:
+            # Groq failed — try Gemini
+            gemini = call_gemini(full_messages, active_tools)
+            if not gemini:
+                return "I'm having trouble connecting right now — please try again in a moment!"
 
-            full_messages.append({"role": "tool", "tool_call_id": tc["id"], "content": json.dumps(result)})
+            if not gemini["fn_calls"]:
+                return gemini["text"] or "I'm not sure how to respond — could you rephrase?"
+
+            # Execute Gemini tool calls
+            for fc in gemini["fn_calls"]:
+                fn_name = fc.get("name", "")
+                fn_args = fc.get("args", {}) or {}
+                try:
+                    result = TOOL_MAP[fn_name](**fn_args) if fn_name in TOOL_MAP else {"error": f"Unknown tool: {fn_name}"}
+                except Exception as e:
+                    result = {"error": str(e)}
+                full_messages.append({"role": "assistant", "content": gemini["text"] or ""})
+                full_messages.append({"role": "tool", "tool_call_id": fn_name, "content": json.dumps(result)})
 
     return "I ran into a snag — could you try again?"
