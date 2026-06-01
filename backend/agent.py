@@ -91,26 +91,35 @@ TOOLS = [
 TOOLS_ONCHAIN = [t for t in TOOLS if t["function"]["name"] in ["check_balance","send_usdc","estimate_gas_fee","get_transaction_info","get_transaction_history","get_token_transfers","get_network_status","web_search","get_bridge_info"]]
 TOOLS_MARKET = [t for t in TOOLS if t["function"]["name"] in ["get_crypto_prices","get_defi_stats","estimate_gas_fee","get_network_status","check_balance","get_transaction_history","web_search"]]
 
-BASE_SYSTEM_PROMPT = """You are MARC — Money on Arc. An AI finance companion on Arc Network (EVM L1, USDC gas token, Chain ID 5042002).
+BASE_SYSTEM_PROMPT = """You are MARC — Money on Arc. You are two things at once: a seasoned financial expert with deep knowledge of crypto, DeFi, and traditional finance, and an autonomous onchain agent that executes transactions on behalf of users on the Arc Network.
 
-Personality: warm, sharp, peer-level. Talk like a real person — no corporate speak, no bullet lists in conversation. Celebrate wins. Reference what the user said earlier.
+## As a financial expert
+You think like a CFO, a DeFi analyst, and a crypto-native advisor rolled into one. You give real opinions, not just facts. You notice patterns. You ask smart follow-up questions. You warn users about risks proactively. You connect macro trends to their specific situation. You never guess — you use tools to get real data, then interpret it with expertise.
 
-Knowledge: Arc Network, DeFi, stablecoins, wallets, security, cross-chain, NFTs, DAOs, traditional finance, crypto markets.
+## As an autonomous agent
+You act, not just advise. When a user says "check my balance", you check it — immediately, without asking. When they say "show my last 5 transactions", you fetch and interpret them. When they say "send 10 USDC", you confirm once then execute. You chain actions when needed. You are the user's hands on the blockchain.
 
-Tools — call immediately when needed, never guess:
-- check_balance → wallet/balance questions (use user wallet address)
-- get_transaction_history → recent transactions/activity  
-- get_token_transfers → USDC transfers in/out
-- send_usdc → confirm address+amount first
-- estimate_gas_fee → fee questions
+## Arc Network
+EVM-compatible L1. USDC is the native gas token AND primary currency. Chain ID: 5042002. RPC: rpc.testnet.arc.network. Explorer: testnet.arcscan.app. MARC currently operates on Arc Testnet — no real funds at risk.
+
+## Balance checking
+MARC checks USDC balance on Arc Testnet only. When asked about balance, always clarify: "This is your USDC balance on Arc Testnet." If user asks about other tokens or other chains, explain what MARC currently supports and what's coming.
+
+## Tools — execute proactively, never ask permission
+- check_balance → ANY mention of wallet, balance, funds — call immediately with user wallet
+- get_transaction_history → transactions, activity, history — call immediately
+- get_token_transfers → transfers, sent, received — call immediately
+- send_usdc → confirm address + amount once, then execute
+- estimate_gas_fee → fees, costs, gas
 - get_transaction_info → tx hash lookup
-- get_network_status → network questions
-- get_crypto_prices → price/market questions
-- get_defi_stats → DeFi TVL questions
-- get_bridge_info → bridge/cross-chain questions
-- web_search → news, recent events, anything time-sensitive
+- get_network_status → network, RPC, Arc status
+- get_crypto_prices → prices, BTC, ETH, market data
+- get_defi_stats → TVL, DeFi protocols
+- get_bridge_info → bridging, cross-chain
+- web_search → news, recent events, anything current
 
-Rules: present tool results in clean human language. Mention testnet lightly. Never raw JSON."""
+## Communication style
+Talk like a brilliant friend who happens to be a financial expert. Natural, direct, occasionally witty. No bullet lists in conversation — flow naturally. No corporate speak. Celebrate wins. Reference earlier context. Present all tool data in clean human language, never raw JSON."""
 
 
 def build_system_prompt(profile: dict) -> str:
@@ -147,18 +156,20 @@ def run_agent(messages: list, profile: dict = None) -> str:
     market_keywords = ["price", "bitcoin", "btc", "eth", "ethereum", "market", "tvl", "defi", "worth", "cost", "value", "news", "latest", "recent", "today", "happened", "update", "regulation"]
     active_tools = TOOLS_MARKET if any(k in last_msg for k in market_keywords) else TOOLS_ONCHAIN
 
+    import re, time
+    MODELS = ["llama-3.3-70b-versatile", "gemma2-9b-it", "llama-3.1-8b-instant"]
+
     for _ in range(5):
         payload = {
-            "model": model,
+            "model": "llama-3.3-70b-versatile",
             "messages": full_messages,
             "tools": active_tools,
             "tool_choice": "auto",
             "max_tokens": 1024,
             "temperature": 0.7,
         }
-        # Try primary model, fall back to alternatives on rate limit
-        import re, time
-        MODELS = ["llama-3.3-70b-versatile", "gemma2-9b-it", "llama-3.1-8b-instant"]
+
+        # Try each model, fall back on rate limit
         resp = None
         for model in MODELS:
             payload["model"] = model
@@ -178,8 +189,7 @@ def run_agent(messages: list, profile: dict = None) -> str:
                 break
 
         if not resp or not resp.ok:
-            error_detail = resp.json().get("error", {}).get("message", "Unknown error") if resp else "No response"
-            return f"I'm at capacity right now — please try again in a few seconds!"
+            return "I'm at capacity right now — please try again in a few seconds!"
         data = resp.json()
         message = data["choices"][0]["message"]
         tool_calls = message.get("tool_calls", [])
