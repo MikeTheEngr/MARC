@@ -94,8 +94,6 @@ MARC is both an AI financial advisor and an autonomous onchain agent. He doesn�
 |-------------|------------------------------------|
 |Frontend     |React 18, Vite, ethers.js           |
 |Backend      |FastAPI, Python 3.12                |
-|AI — Primary |Groq (llama-3.3-70b-versatile)      |
-|AI — Fallback|Gemini 2.0 Flash                    |
 |Blockchain   |Arc Testnet, Web3.py, Circle CCTP v2|
 |Auth         |Supabase Auth                       |
 |Database     |Supabase (PostgreSQL)               |
@@ -176,8 +174,8 @@ Visit [faucet.circle.com](https://faucet.circle.com) and request testnet USDC to
 [![Arc Network](https://img.shields.io/badge/Built%20on-Arc%20Network-00E5BE?style=for-the-badge)](https://arc.io)
 
 Arc is an EVM-compatible Layer-1 blockchain built for programmable money.
-USDC is the native gas token — stablecoin-native DeFi without ETH volatility.
+USDC is the native gas token,stablecoin-native DeFi without ETH volatility.
 
-*MARC is currently on Arc Testnet — no real funds at risk.*
+*MARC is currently on Arc Testnet,no real funds at risk.*
 
 </div>
