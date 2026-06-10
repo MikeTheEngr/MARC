@@ -1,4 +1,13 @@
-# MARC
+<div align="center">
+
+```
+███╗   ███╗ █████╗ ██████╗  ██████╗
+████╗ ████║██╔══██╗██╔══██╗██╔════╝
+██╔████╔██║███████║██████╔╝██║     
+██║╚██╔╝██║██╔══██║██╔══██╗██║     
+██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗
+╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝
+```
 
 ## Money on Arc — AI-Powered Onchain Finance Companion
 
@@ -9,6 +18,8 @@
 ![Database](https://img.shields.io/badge/Database-Supabase%20%7C%20Redis-3ECF8E?style=flat-square)
 ![Deploy](https://img.shields.io/badge/Deploy-Vercel%20%7C%20Render-black?style=flat-square)
 ![Status](https://img.shields.io/badge/status-live-brightgreen?style=flat-square)
+
+</div>
 
 -----
 
@@ -39,13 +50,13 @@ MARC is both an AI financial advisor and an autonomous onchain agent. He doesn�
 │                                                      │
 │   MARC Agent (Groq + Gemini dual provider)          │
 │   Tool execution  │  Auth routes  │  Memory (Redis)  │
-└──────┬───────────────────┬───────────────────────────┘
+└──────┬───────────────────┬──────────────────────────┘
        │                   │
-┌──────▼──────┐    ┌───────▼────────────────────────┐
-│  Arc Testnet │    │         External APIs           │
-│  Chain 5042002│   │  CoinGecko · DeFi Llama        │
-│  USDC gas    │    │  DuckDuckGo · Circle CCTP       │
-└─────────────┘    └────────────────────────────────┘
+┌──────▼──────┐    ┌───────▼───────────────────────┐
+│  Arc Testnet │    │        External APIs           │
+│  Chain 5042002│   │  CoinGecko · DeFi Llama       │
+│  USDC gas    │    │  DuckDuckGo · Circle CCTP      │
+└─────────────┘    └───────────────────────────────┘
 ```
 
 -----
@@ -70,7 +81,7 @@ MARC is both an AI financial advisor and an autonomous onchain agent. He doesn�
 
 ### Personalization
 
-- **Adaptive Tone** — beginner mode uses analogies and check-ins; experienced mode is peer-level and technical
+- **Adaptive Tone** — beginner mode uses analogies; experienced mode is peer-level and technical
 - **Persistent Memory** — Redis stores conversation history per user across sessions
 - **User Profiles** — name, language preference, risk appetite stored in Supabase
 - **Wallet Integration** — any EVM wallet (MetaMask, Coinbase Wallet, Rainbow, etc.)
@@ -120,52 +131,9 @@ MARC is both an AI financial advisor and an autonomous onchain agent. He doesn�
 - MetaMask (or any EVM wallet)
 - Supabase account
 - Upstash Redis account
-- Groq API key (free at console.groq.com)
-- Gemini API key (free at aistudio.google.com)
+- Groq API key — free at [console.groq.com](https://console.groq.com)
+- Gemini API key — free at [aistudio.google.com](https://aistudio.google.com)
 
-### 1. Clone
-
-```bash
-git clone https://github.com/MikeTheEngr/MARC.git
-cd MARC
-```
-
-### 2. Backend
-
-```bash
-cd backend
-pip install -r requirements.txt
-cp .env.example .env
-# Fill in your keys in .env
-uvicorn main:app --reload --port 8000
-```
-
-### 3. Frontend
-
-```bash
-cd frontend
-npm install
-cp .env.example .env
-# Fill in VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_BACKEND_URL
-npm run dev
-```
-
-### 4. Database
-
-Run in Supabase SQL Editor:
-
-```sql
-create table public.profiles (
-  id uuid references auth.users on delete cascade primary key,
-  username text unique,
-  wallet_address text,
-  language text default 'English',
-  risk_appetite text default 'beginner',
-  created_at timestamp with time zone default timezone('utc', now())
-);
-alter table public.profiles enable row level security;
-create policy "Service role full access" on public.profiles for all using (true) with check (true);
-```
 
 ### 5. Add Arc Testnet to MetaMask
 
@@ -183,31 +151,6 @@ Visit [faucet.circle.com](https://faucet.circle.com) and request testnet USDC to
 
 -----
 
-## Environment Variables
-
-### Backend (`backend/.env`)
-
-```
-GROQ_API_KEY=
-GEMINI_API_KEY=
-ARC_RPC_URL=https://rpc.testnet.arc.network
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_KEY=
-UPSTASH_REDIS_REST_URL=
-UPSTASH_REDIS_REST_TOKEN=
-```
-
-### Frontend (`frontend/.env`)
-
-```
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
-VITE_BACKEND_URL=https://marc-00n3.onrender.com
-```
-
------
-
 ## Roadmap
 
 - [x] Phase 1 — Browser wallet signing (MetaMask, no server key)
@@ -221,17 +164,21 @@ VITE_BACKEND_URL=https://marc-00n3.onrender.com
 
 ## Live Demo
 
-**Frontend:** [marc-livid-phi.vercel.app](https://marc-livid-phi.vercel.app)
-**Backend:** [marc-00n3.onrender.com](https://marc-00n3.onrender.com)
+|            |                                                              |
+|------------|--------------------------------------------------------------|
+|**Frontend**|[marc-livid-phi.vercel.app](https://marc-livid-phi.vercel.app)|
+|**Backend** |[marc-00n3.onrender.com](https://marc-00n3.onrender.com)      |
+|**Explorer**|[testnet.arcscan.app](https://testnet.arcscan.app)            |
 
 -----
 
-## Built On
+<div align="center">
 
-[![Arc Network](https://img.shields.io/badge/Built%20on-Arc%20Network-00E5BE?style=flat-square)](https://arc.io)
+[![Arc Network](https://img.shields.io/badge/Built%20on-Arc%20Network-00E5BE?style=for-the-badge)](https://arc.io)
 
-Arc is an EVM-compatible Layer-1 blockchain built for programmable money. USDC is the native gas token, enabling stablecoin-native DeFi without ETH volatility.
-
------
+Arc is an EVM-compatible Layer-1 blockchain built for programmable money.
+USDC is the native gas token — stablecoin-native DeFi without ETH volatility.
 
 *MARC is currently on Arc Testnet — no real funds at risk.*
+
+</div>
