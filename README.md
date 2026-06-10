@@ -167,7 +167,6 @@ Visit [faucet.circle.com](https://faucet.circle.com) and request testnet USDC to
 |            |                                                              |
 |------------|--------------------------------------------------------------|
 |**Frontend**|[marc-livid-phi.vercel.app](https://marc-livid-phi.vercel.app)|
-|**Backend** |[marc-00n3.onrender.com](https://marc-00n3.onrender.com)      |
 |**Explorer**|[testnet.arcscan.app](https://testnet.arcscan.app)            |
 
 -----
