@@ -120,19 +120,6 @@ MARC is both an AI financial advisor and an autonomous onchain agent. He doesn�
 
 -----
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- Python 3.12+
-- MetaMask (or any EVM wallet)
-- Supabase account
-- Upstash Redis account
-- Groq API key — free at [console.groq.com](https://console.groq.com)
-- Gemini API key — free at [aistudio.google.com](https://aistudio.google.com)
-
-
 ### 5. Add Arc Testnet to MetaMask
 
 |Field          |Value                            |
